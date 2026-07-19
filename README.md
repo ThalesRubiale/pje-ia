@@ -29,21 +29,36 @@ resumos, linhas do tempo, partes, pedidos, provas — direto na página do proce
 - **OCR nativo** — peças digitalizadas (imagem) são lidas pelo próprio Claude, sem OCR externo.
 - **Respostas formatadas** — markdown completo: tabelas, listas, títulos e citações.
 - **Citações pelo nome da peça** — cada PDF é enviado com o título da peça, para o modelo citar "na Contestação…" em vez de números de id.
-- **Streaming** — a resposta aparece em tempo real, com indicador de raciocínio.
-- **Modo expandido** — painel em tela cheia com duas colunas para leitura confortável.
+- **Citações com página** — as afirmações vêm com marcadores `[n]` clicáveis e a lista de fontes ("Contestação, fl. 12") no rodapé de cada resposta.
+- **Busca de jurisprudência** 🔍 — toggle que libera pesquisa em fontes oficiais (STF, STJ, Planalto, LexML…), com a consulta em andamento exibida em tempo real.
+- **Gerar .docx** 📄 — relatório do processo em Word de verdade (skill oficial da Anthropic), baixado direto pelo navegador.
+- **Streaming** — a resposta aparece em tempo real, com raciocínio do modelo em bloco colapsável.
+- **Medidor de contexto** — barra mostra quanto da janela do modelo (tokens e páginas de PDF) a conversa já ocupa, com alertas em 70% e 90%.
+- **Files API + anexo incremental** — cada peça sobe uma única vez; os turnos seguintes reaproveitam o que já está na conversa.
+- **Modo expandido e tela cheia** — três tamanhos de painel para leitura confortável.
+- **Exportar a conversa** — baixe o diálogo em `.md` ou copie cada resposta com um clique.
 - **Prompt caching** — os PDFs anexados são cacheados pela API (~90% mais barato nos turnos seguintes).
 - **Erros amigáveis** — chave inválida, conta sem crédito, limites e sobrecarga explicados em português.
 
 ## 🚀 Instalação
 
-> A extensão ainda não está na Chrome Web Store — instale em modo desenvolvedor:
+<p align="center">
+  <a href="https://github.com/marcosmarf27/pje-ia/releases/latest/download/pje-ia.zip">
+    <img alt="⬇️ Baixar a extensão (.zip)" src="https://img.shields.io/badge/⬇️%20Baixar%20a%20extens%C3%A3o-pje--ia.zip-c49e60?style=for-the-badge&labelColor=14243d">
+  </a>
+</p>
 
-1. Baixe o projeto (`Code → Download ZIP`) e extraia, ou `git clone` este repositório.
-2. Abra `chrome://extensions` e ative o **Modo do desenvolvedor**.
-3. Clique em **Carregar sem compactação** e selecione a pasta do projeto.
+> A extensão ainda não está na Chrome Web Store — instale em modo desenvolvedor (leva 1 minuto):
+
+1. **[Baixe o pje-ia.zip](https://github.com/marcosmarf27/pje-ia/releases/latest/download/pje-ia.zip)** (última versão) e **extraia** para uma pasta fixa (ex.: `Documentos\pje-ia`).
+   - O Chrome carrega a extensão dessa pasta — não a apague depois.
+2. Abra `chrome://extensions` e ative o **Modo do desenvolvedor** (canto superior direito).
+3. Clique em **Carregar sem compactação** e selecione a pasta extraída (a que contém o `manifest.json`).
 4. Clique no ícone **PJe IA** na barra do Chrome, cole sua chave da API da Anthropic e salve.
    - Não tem chave? O popup traz um **guia passo a passo** para criar a chave e adicionar crédito
      no [console.anthropic.com](https://console.anthropic.com).
+
+**Para atualizar:** baixe o novo `.zip`, extraia por cima da mesma pasta e clique em **↺ Atualizar** em `chrome://extensions`. (Quem preferir pode continuar usando `git clone` + carregar a pasta do repositório.)
 
 ## 📖 Como usar
 
@@ -96,10 +111,11 @@ flowchart LR
 
 ## 🗺️ Roadmap
 
+- [x] Files API para processos muito volumosos
+- [x] Exportar a análise (copiar/.md/DOCX)
 - [ ] Suporte a outros tribunais que usam PJe (TJs/TRFs/TRTs) via configuração de domínio
 - [ ] Carregamento automático da timeline completa (peças fora da rolagem)
-- [ ] Files API para processos muito volumosos
-- [ ] Exportar a análise (copiar/DOCX)
+- [ ] Compaction para conversas muito longas
 - [ ] Publicação na Chrome Web Store
 
 ## 🤝 Contribuindo
