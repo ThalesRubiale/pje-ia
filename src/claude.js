@@ -110,6 +110,11 @@ export async function* streamClaude(req) {
             b.input = {};
           }
           delete b.__pj;
+          // input completo da ferramenta (ex.: a consulta da busca) — permite
+          // à UI mostrar O QUE está sendo pesquisado, não só que há busca
+          if (b.type === "server_tool_use" || b.type === "tool_use") {
+            yield { kind: "tool", name: b.name || b.type, input: b.input };
+          }
         }
         break;
       }

@@ -174,7 +174,8 @@ async function executarTurno(port, payload) {
         port.postMessage({ type: "thinking", text: ev.text });
       else if (ev.kind === "citation")
         port.postMessage({ type: "citation", citation: ev.citation });
-      else if (ev.kind === "tool") port.postMessage({ type: "tool", name: ev.name });
+      else if (ev.kind === "tool")
+        port.postMessage({ type: "tool", name: ev.name, input: ev.input });
       else if (ev.kind === "trunc") port.postMessage({ type: "trunc" });
       else if (ev.kind === "final") final = ev;
     }

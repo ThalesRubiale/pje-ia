@@ -394,7 +394,7 @@
         if (m.type === "delta") handlers.onDelta(m.text);
         else if (m.type === "thinking") handlers.onThinking(m.text);
         else if (m.type === "citation") handlers.onCitation && handlers.onCitation(m.citation);
-        else if (m.type === "tool") handlers.onTool && handlers.onTool(m.name);
+        else if (m.type === "tool") handlers.onTool && handlers.onTool(m.name, m.input);
         else if (m.type === "file") handlers.onFile && handlers.onFile(m);
         else if (m.type === "trunc") handlers.onTrunc();
         else if (m.type === "done") {
@@ -533,6 +533,7 @@
       // (área de uso privado do Unicode — sobrevivem intactos ao escape do
       // renderizador) e a lista numerada vai no rodapé da mensagem.
       const cites = [];
+      let statusFerramenta = false; // há status de busca/ferramenta na tela
       const citeKeys = new Map();
       // Busca de jurisprudência: ferramentas web entram só com o toggle ligado.
       // Nunca combinamos ferramentas web com code_execution no mesmo request
@@ -547,7 +548,12 @@
       let thinkAcc = "";
       const fim = await stream(conversation, {
         onDelta(delta) {
-          if (!acc) panel.setStatus("");
+          // limpa o status inicial e também o de ferramenta (a busca acabou
+          // quando o texto volta a fluir)
+          if (!acc || statusFerramenta) {
+            panel.setStatus("");
+            statusFerramenta = false;
+          }
           acc += delta;
           panel.updateAssistant(assistantEl, acc, cites);
         },
@@ -569,11 +575,30 @@
           acc += "\uE000" + n + "\uE001";
           panel.updateAssistant(assistantEl, acc, cites);
         },
-        onTool(name) {
-          if (acc) return; // ferramenta no meio do texto: não sobrepõe a resposta
-          if (name === "web_search") panel.setStatus("Pesquisando jurisprudência na web…", true);
-          else if (name === "web_fetch") panel.setStatus("Lendo página de fonte jurídica…", true);
-          else panel.setStatus("Executando ferramenta…", true);
+        // Mostra a atividade da ferramenta SEMPRE (o modelo costuma escrever
+        // "vou pesquisar…" antes de buscar — sem isso o usuário fica sem
+        // nenhum sinal durante a busca). Com o input completo, mostra também
+        // O QUE está sendo pesquisado/lido.
+        onTool(name, input) {
+          statusFerramenta = true;
+          if (name === "web_search") {
+            const q = input && input.query;
+            panel.setStatus(
+              q ? "Pesquisando jurisprudência: “" + q + "”…" : "Pesquisando jurisprudência na web…",
+              true
+            );
+          } else if (name === "web_fetch") {
+            let fonte = "";
+            try {
+              fonte = input && input.url ? new URL(input.url).hostname : "";
+            } catch {}
+            panel.setStatus(
+              fonte ? "Lendo fonte: " + fonte + "…" : "Lendo página de fonte jurídica…",
+              true
+            );
+          } else {
+            panel.setStatus("Executando ferramenta…", true);
+          }
         },
         onTrunc() {
           truncated = true;
@@ -695,7 +720,8 @@
             if (!acc) panel.setStatus("Planejando o documento…", true);
           },
           onTool() {
-            if (!acc) panel.setStatus("Gerando o arquivo .docx…", true);
+            // sempre: o code execution roda por longos períodos após o texto
+            panel.setStatus("Gerando o arquivo .docx… (o código está executando no servidor)", true);
           },
           onFile(f) {
             arquivo = f;
