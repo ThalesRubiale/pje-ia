@@ -302,14 +302,18 @@ var PjePanel = (function () {
                 <span class="ctxlab">Ferramentas</span>
                 <div class="tools">
                   <button class="tgl-search" aria-pressed="false" title="Liga/desliga a busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…). Com a busca ligada, escreva a pergunta e use o botão Enviar normalmente.">🔍 Jurisprudência</button>
-                  <button class="btn-docx" title="Gera um documento Word (.docx) com base nas peças marcadas. 1º clique: preenche a instrução no campo (edite à vontade). 2º clique: gera o documento. Não use o botão Enviar para isso.">📄 Gerar .docx</button>
+                  <button class="btn-docx" title="Liga o modo documento: a instrução aparece no campo (edite à vontade) e o botão Enviar vira “Gerar” — clique nele (ou Enter) para gerar o Word (.docx) com base nas peças marcadas.">📄 Gerar .docx</button>
                 </div>
+              </div>
+              <div class="docxbar" hidden>
+                <span class="docxbar-t">📄 <b>Modo documento ligado</b> — revise a instrução abaixo e clique em <b>Gerar</b>: a resposta será um arquivo Word (.docx), pode levar 1–2 min.</span>
+                <button class="docxbar-x" title="Cancelar a geração de documento (Esc)">✕</button>
               </div>
               <div class="inrow">
                 <textarea class="in" rows="1" placeholder="Pergunte sobre as peças… (@ cita uma peça)"></textarea>
                 <button class="send">Enviar</button>
               </div>
-              <div class="hint-key"><b>@</b> cita peças &nbsp;·&nbsp; <b>Enter</b> envia &nbsp;·&nbsp; <b>Shift+Enter</b> quebra linha &nbsp;·&nbsp; <b>📄 .docx</b> em 2 cliques: revisar → gerar</div>
+              <div class="hint-key"><b>@</b> cita peças &nbsp;·&nbsp; <b>Enter</b> envia &nbsp;·&nbsp; <b>Shift+Enter</b> quebra linha &nbsp;·&nbsp; <b>📄 .docx</b>: clique no botão, revise a instrução e clique em <b>Gerar</b></div>
             </div>
           </div>
         </div>
@@ -398,36 +402,49 @@ var PjePanel = (function () {
         : "Busca de jurisprudência desligada.";
     });
 
-    // Geração de .docx em DOIS cliques guiados: o primeiro clique preenche o
-    // campo com a instrução (padrão, editável) e explica o próximo passo; o
-    // segundo clique — com instrução no campo — dispara a geração.
+    // Geração de .docx por MODO DOCUMENTO explícito: o clique no botão liga o
+    // modo — a instrução padrão (editável) entra no campo, a faixa .docxbar
+    // explica o passo e o botão Enviar vira "📄 Gerar". Enviar/Enter geram o
+    // documento; ✕, Esc ou novo clique no botão cancelam. (O fluxo antigo de
+    // "dois cliques no mesmo botão" confundia: todo mundo aperta Enviar.)
     const INSTRUCAO_DOCX_PADRAO =
       "Elabore um relatório completo do processo: identificação e partes, síntese dos fatos, " +
       "linha do tempo dos atos processuais, pedidos, teses de cada parte, provas produzidas e " +
       "situação atual do feito.";
     const btnDocx = $(".btn-docx");
+    const docxbar = $(".docxbar");
     let gerarDocCb = null;
+    let docxMode = false;
+    function setDocxMode(on) {
+      docxMode = on;
+      docxbar.hidden = !on;
+      btnDocx.classList.toggle("on", on);
+      btnDocx.textContent = on ? "✕ Cancelar .docx" : "📄 Gerar .docx";
+      sendBtn.textContent = on ? "📄 Gerar" : "Enviar";
+      sendBtn.classList.toggle("docx", on);
+      inEl.placeholder = on
+        ? "Instrução do documento — edite e clique em Gerar…"
+        : "Pergunte sobre as peças… (@ cita uma peça)";
+      if (!on) statusEl.textContent = "";
+    }
     btnDocx.addEventListener("click", () => {
-      if (!gerarDocCb) return;
+      if (docxMode) return setDocxMode(false); // segundo clique = cancelar
       if (!getSelected().length) {
         statusEl.textContent =
-          "Para gerar o documento, primeiro marque as peças na lista ao lado.";
+          "Para gerar o documento, primeiro marque as peças que devem embasá-lo.";
         return;
       }
-      const t = inEl.value.trim();
-      if (!t) {
+      // preserva o que o usuário já digitou; senão, oferece a instrução padrão
+      if (!inEl.value.trim()) {
         inEl.value = INSTRUCAO_DOCX_PADRAO;
         autoresize();
-        inEl.focus();
-        statusEl.textContent =
-          "Instrução preenchida no campo — edite se quiser e clique em “📄 Gerar .docx” de novo para gerar o documento.";
-        return;
       }
-      gerarDocCb(t, getSelected());
-      inEl.value = "";
-      inEl.style.height = "auto";
-      closeMention();
+      setDocxMode(true);
+      inEl.focus();
     });
+    docxbar
+      .querySelector(".docxbar-x")
+      .addEventListener("click", () => setDocxMode(false));
 
     // Ações rápidas: preenchem o campo com um prompt pronto para revisão
     const quickEl = $(".quick");
@@ -703,8 +720,24 @@ var PjePanel = (function () {
     let sendCb = null;
     let configureCb = null;
     function doSend() {
-      if (!sendCb) return;
       const t = inEl.value;
+      // No modo documento, Enviar/Enter geram o .docx (instrução vazia cai na
+      // padrão, tratada pelo content script) — nunca viram mensagem de chat.
+      if (docxMode) {
+        if (!gerarDocCb) return;
+        const sel = getSelected();
+        if (!sel.length) {
+          statusEl.textContent = "Marque as peças que devem embasar o documento.";
+          return;
+        }
+        setDocxMode(false);
+        gerarDocCb(t, sel);
+        inEl.value = "";
+        inEl.style.height = "auto";
+        closeMention();
+        return;
+      }
+      if (!sendCb) return;
       if (!t.trim()) return;
       sendCb(t, getSelected());
       inEl.value = "";
@@ -737,6 +770,12 @@ var PjePanel = (function () {
           closeMention();
           return;
         }
+      }
+      // Esc com o popup @ fechado cancela o modo documento
+      if (e.key === "Escape" && docxMode) {
+        e.preventDefault();
+        setDocxMode(false);
+        return;
       }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
@@ -858,6 +897,7 @@ var PjePanel = (function () {
         needkeyEl = null;
         prepEl = null;
         transcript.length = 0;
+        setDocxMode(false); // nova conversa desliga o modo documento
         statusEl.textContent = "";
         showEmptyHint();
       },

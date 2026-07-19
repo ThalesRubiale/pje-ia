@@ -136,9 +136,13 @@ texto e o checkbox correspondente é alternado. Detalhes fáceis de quebrar:
 
 ## Geração de .docx (skill oficial)
 
-Botão "📄 Gerar .docx" no painel, em dois cliques guiados: o 1º clique preenche o campo
-com a instrução padrão (editável) e explica o próximo passo; o 2º clique dispara o
-request `gerarDoc` com as peças selecionadas + a instrução do campo. O worker extrai o
+Botão "📄 Gerar .docx" no painel liga o **modo documento** (`docxMode` em `panel.js`):
+a instrução padrão (editável) entra no campo, a faixa `.docxbar` explica o passo e o
+botão Enviar vira "📄 Gerar" — Enviar/Enter disparam o request `gerarDoc` com as peças
+selecionadas + a instrução do campo (vazia cai na padrão). ✕ na faixa, Esc (com o
+popup `@` fechado) ou novo clique no botão cancelam; "Nova conversa" também desliga o
+modo. Não reintroduzir o fluxo antigo de "dois cliques no mesmo botão" — o usuário
+sempre aperta Enviar. O worker extrai o
 `file_id` dos blocos
 `bash_code_execution_tool_result` (fica com o **último** `.docx` gerado), baixa via Files
 API e repassa os bytes pelo Port; o content script dispara o download com Blob + âncora

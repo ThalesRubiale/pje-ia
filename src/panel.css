@@ -549,6 +549,31 @@
   transition: all 0.15s;
 }
 .btn-docx:hover { border-color: var(--gold); color: var(--text); }
+.btn-docx.on {
+  background: #f6f1e4; border-color: var(--gold); color: var(--text);
+  font-weight: 600; box-shadow: inset 0 0 0 1px rgba(196, 158, 96, 0.35);
+}
+
+/* ---------- Modo documento (.docx) ----------
+   Faixa entre as ferramentas e o campo: explica que Enviar virou "Gerar". */
+.docxbar {
+  display: flex; align-items: center; gap: 8px;
+  background: #fdf8ec; border: 1px solid rgba(196, 158, 96, 0.5);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 8px 8px 0; padding: 6px 10px; margin: 7px 0 5px;
+  font-size: 12px; color: #5a4a2f; animation: chip-in 0.18s ease-out;
+}
+.docxbar[hidden] { display: none; }
+.docxbar-t { flex: 1; min-width: 0; line-height: 1.4; }
+.docxbar-t b { color: var(--gold-2); }
+.docxbar-x {
+  flex: none; border: none; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 13px; line-height: 1; padding: 3px 7px;
+  border-radius: 6px;
+}
+.docxbar-x:hover { background: #f0e7d2; color: var(--text); }
+/* o botão Enviar vira "📄 Gerar" — halo dourado para marcar a mudança */
+.send.docx { box-shadow: 0 0 0 3px rgba(196, 158, 96, 0.3); }
 
 /* ---------- Ações rápidas ---------- */
 .quick-btn {
