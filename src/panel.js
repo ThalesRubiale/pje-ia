@@ -153,7 +153,25 @@ var PjePanel = (function () {
       '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>',
     reset:
       '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 1 1 1.6 3.9M2.5 12V8.8h3.2"/></svg>',
+    doc:
+      '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 1.5h-5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5z"/><path d="M9.5 1.5V5h3"/></svg>',
+    x:
+      '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
+    check:
+      '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg>',
   };
+
+  // Título curto da peça (sem o prefixo numérico do id) para chips e menções.
+  function tituloCurto(t) {
+    return String(t).replace(/^\d{6,}\s*-\s*/, "");
+  }
+  // Normaliza para busca sem acentos/caixa (ex.: "peticao" acha "Petição").
+  function norm(s) {
+    return String(s)
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "");
+  }
 
   function mount() {
     const host = document.createElement("div");
@@ -194,12 +212,20 @@ var PjePanel = (function () {
           <div class="main">
             <div class="msgs"></div>
             <div class="ft">
-              <div class="status"></div>
+              <div class="mention" hidden>
+                <div class="mention-hd">
+                  <span>Adicionar peça ao contexto</span>
+                  <span class="mention-keys"><kbd>↑↓</kbd> navegar <kbd>↵</kbd> marcar <kbd>esc</kbd> fechar</span>
+                </div>
+                <div class="mention-list" role="listbox"></div>
+              </div>
+              <div class="status" aria-live="polite"></div>
+              <div class="ctxbar" hidden></div>
               <div class="inrow">
-                <textarea class="in" rows="1" placeholder="Pergunte sobre as peças marcadas…"></textarea>
+                <textarea class="in" rows="1" placeholder="Pergunte sobre as peças… (@ cita uma peça)"></textarea>
                 <button class="send">Enviar</button>
               </div>
-              <div class="hint-key">As peças marcadas são enviadas ao Claude. Enter envia • Shift+Enter quebra linha.</div>
+              <div class="hint-key">Digite <b>@</b> para citar peças • Enter envia • Shift+Enter quebra linha.</div>
             </div>
           </div>
         </div>
@@ -219,8 +245,13 @@ var PjePanel = (function () {
     const msgs = $(".msgs");
     const ft = $(".ft");
     const statusEl = $(".status");
+    const ctxbar = $(".ctxbar");
+    const mentionEl = $(".mention");
+    const mentionList = $(".mention-list");
     const inEl = $(".in");
     const sendBtn = $(".send");
+
+    let allDocs = []; // [{id, titulo}] espelho da lista lateral
 
     let hintEl = null;
     function showEmptyHint() {
@@ -228,7 +259,7 @@ var PjePanel = (function () {
       hintEl = document.createElement("div");
       hintEl.className = "hint-empty";
       hintEl.innerHTML =
-        '<span class="big">Como posso ajudar?</span>Marque as peças acima e faça sua pergunta — ex.: <em>"Resuma a inicial e a réplica"</em>.';
+        '<span class="big">Como posso ajudar?</span>Marque as peças acima ou digite <b>@</b> no campo abaixo para escolhê-las — ex.: <em>"Resuma a inicial e a réplica"</em>.';
       msgs.appendChild(hintEl);
     }
     function clearEmptyHint() {
@@ -254,21 +285,190 @@ var PjePanel = (function () {
     });
 
     // auto-resize do textarea
-    inEl.addEventListener("input", () => {
+    function autoresize() {
       inEl.style.height = "auto";
       inEl.style.height = Math.min(inEl.scrollHeight, 140) + "px";
-    });
+    }
 
-    chkAll.addEventListener("change", () => {
-      doclist
-        .querySelectorAll('input[type="checkbox"]')
-        .forEach((c) => (c.checked = chkAll.checked));
-    });
+    // -------------------------------------------------------------------------
+    // Seleção de peças: os checkboxes da lista lateral são a fonte de verdade.
+    // Chips da barra de contexto, contador e popup @ são visões sincronizadas.
+    // -------------------------------------------------------------------------
     function getSelected() {
       return [...doclist.querySelectorAll('input[type="checkbox"]:checked')].map(
         (c) => c.value
       );
     }
+    function getSelectedDocs() {
+      const ids = new Set(getSelected());
+      return allDocs.filter((d) => ids.has(d.id));
+    }
+    function setDocChecked(id, on) {
+      const c = doclist.querySelector('input[value="' + CSS.escape(id) + '"]');
+      if (c) c.checked = on;
+    }
+
+    let prevChipIds = new Set(); // anima só chips recém-adicionados
+    function syncSelection() {
+      const sel = getSelectedDocs();
+      const total = allDocs.length;
+
+      chkAll.checked = total > 0 && sel.length === total;
+      countEl.textContent = total
+        ? sel.length
+          ? `(${sel.length}/${total} no contexto)`
+          : `(${total})`
+        : "";
+
+      // chips da barra de contexto
+      ctxbar.innerHTML = "";
+      if (!sel.length) {
+        ctxbar.hidden = true;
+        prevChipIds = new Set();
+        return;
+      }
+      ctxbar.hidden = false;
+      const lab = document.createElement("span");
+      lab.className = "ctxlab";
+      lab.textContent = "Contexto";
+      ctxbar.appendChild(lab);
+      for (const d of sel) {
+        const chip = document.createElement("span");
+        chip.className = "chip" + (prevChipIds.has(d.id) ? "" : " new");
+        chip.innerHTML =
+          SVG.doc +
+          '<span class="chip-t" title="' + escapeHtml(d.titulo) + '">' +
+          escapeHtml(tituloCurto(d.titulo)) +
+          '</span><button class="chip-x" title="Remover do contexto" aria-label="Remover ' +
+          escapeHtml(tituloCurto(d.titulo)) + ' do contexto">' + SVG.x + "</button>";
+        chip.querySelector(".chip-x").addEventListener("click", () => {
+          setDocChecked(d.id, false);
+          syncSelection();
+        });
+        ctxbar.appendChild(chip);
+      }
+      prevChipIds = new Set(sel.map((d) => d.id));
+    }
+
+    chkAll.addEventListener("change", () => {
+      doclist
+        .querySelectorAll('input[type="checkbox"]')
+        .forEach((c) => (c.checked = chkAll.checked));
+      syncSelection();
+    });
+    // eventos change dos checkboxes individuais borbulham até a lista
+    doclist.addEventListener("change", syncSelection);
+
+    // -------------------------------------------------------------------------
+    // Menção @: digitar "@" abre um popup com as peças; selecionar marca a peça
+    // (mesmo estado da lista lateral) e remove o token "@busca" do texto.
+    // -------------------------------------------------------------------------
+    let mention = null; // {start, end, items:[{id,titulo}], idx}
+
+    function findMentionToken() {
+      const pos = inEl.selectionStart;
+      const before = inEl.value.slice(0, pos);
+      // "@" no início ou após espaço/pontuação de abertura; busca pode ter espaços
+      const m = before.match(/(^|[\s([{])@([^@\n]*)$/);
+      if (!m) return null;
+      return { start: pos - m[2].length - 1, end: pos, query: m[2] };
+    }
+
+    function closeMention() {
+      mention = null;
+      mentionEl.hidden = true;
+    }
+
+    const MENTION_MAX = 50; // itens visíveis no popup; o excedente vira aviso
+
+    function updateMention() {
+      const tok = findMentionToken();
+      if (!tok || !allDocs.length) return closeMention();
+      const q = norm(tok.query.trim());
+      const all = allDocs.filter((d) => !q || norm(d.titulo).includes(q));
+      if (!all.length) return closeMention();
+      const items = all.slice(0, MENTION_MAX);
+      const prevId =
+        mention && mention.items[mention.idx] ? mention.items[mention.idx].id : null;
+      const keepIdx = items.findIndex((d) => d.id === prevId);
+      mention = {
+        start: tok.start,
+        end: tok.end,
+        items,
+        extra: all.length - items.length,
+        idx: keepIdx >= 0 ? keepIdx : 0,
+      };
+      renderMention();
+    }
+
+    function renderMention() {
+      const ids = new Set(getSelected());
+      mentionList.innerHTML = "";
+      mention.items.forEach((d, i) => {
+        const row = document.createElement("div");
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", i === mention.idx ? "true" : "false");
+        row.className =
+          "mrow" + (i === mention.idx ? " active" : "") + (ids.has(d.id) ? " on" : "");
+        row.innerHTML =
+          SVG.doc +
+          '<span class="t" title="' + escapeHtml(d.titulo) + '">' +
+          escapeHtml(d.titulo) +
+          "</span>" +
+          (ids.has(d.id)
+            ? '<span class="on-badge">' + SVG.check + " no contexto</span>"
+            : "");
+        // mousedown (não click) para agir antes do blur do textarea
+        row.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          pickMention(i);
+        });
+        row.addEventListener("mouseenter", () => {
+          if (mention && mention.idx !== i) {
+            mention.idx = i;
+            renderMention();
+          }
+        });
+        mentionList.appendChild(row);
+      });
+      if (mention.extra > 0) {
+        const more = document.createElement("div");
+        more.className = "mrow-more";
+        more.textContent =
+          "… e mais " + mention.extra + " peças — continue digitando para filtrar";
+        mentionList.appendChild(more);
+      }
+      mentionEl.hidden = false;
+      const act = mentionList.querySelector(".mrow.active");
+      if (act) act.scrollIntoView({ block: "nearest" });
+    }
+
+    function pickMention(i) {
+      if (!mention || !mention.items[i]) return;
+      const d = mention.items[i];
+      const already = new Set(getSelected()).has(d.id);
+      // remove o token "@busca" do texto
+      const v = inEl.value;
+      inEl.value = v.slice(0, mention.start) + v.slice(mention.end);
+      const caret = mention.start;
+      setDocChecked(d.id, !already); // alterna: marcado sai, desmarcado entra
+      syncSelection();
+      closeMention();
+      autoresize();
+      inEl.focus();
+      inEl.setSelectionRange(caret, caret);
+    }
+
+    inEl.addEventListener("input", () => {
+      autoresize();
+      updateMention();
+    });
+    // o caret pode mudar sem input (clique, setas, Home/End) — reavalia o token
+    inEl.addEventListener("click", updateMention);
+    inEl.addEventListener("keyup", (e) => {
+      if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) updateMention();
+    });
+    inEl.addEventListener("blur", () => setTimeout(closeMention, 120));
 
     let sendCb = null;
     let configureCb = null;
@@ -279,14 +479,108 @@ var PjePanel = (function () {
       sendCb(t, getSelected());
       inEl.value = "";
       inEl.style.height = "auto";
+      closeMention();
     }
     sendBtn.addEventListener("click", doSend);
     inEl.addEventListener("keydown", (e) => {
+      if (mention && !mentionEl.hidden) {
+        const n = mention.items.length;
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          mention.idx = (mention.idx + 1) % n;
+          renderMention();
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          mention.idx = (mention.idx - 1 + n) % n;
+          renderMention();
+          return;
+        }
+        if (e.key === "Enter" || e.key === "Tab") {
+          e.preventDefault();
+          pickMention(mention.idx);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeMention();
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         doSend();
       }
     });
+
+    // -------------------------------------------------------------------------
+    // Card de preparo: progresso por peça enquanto os PDFs são baixados.
+    // -------------------------------------------------------------------------
+    let prepEl = null;
+    let prepTotal = 0;
+    let prepDone = 0;
+
+    function startPrep(items) {
+      endPrep(true);
+      clearEmptyHint();
+      prepTotal = items.length;
+      prepDone = 0;
+      prepEl = document.createElement("div");
+      prepEl.className = "prep";
+      let rows = "";
+      for (const d of items) {
+        rows +=
+          '<div class="prep-row" data-id="' + escapeHtml(d.id) + '">' +
+          '<span class="prep-ic wait"></span>' +
+          '<span class="t" title="' + escapeHtml(d.titulo) + '">' +
+          escapeHtml(tituloCurto(d.titulo)) +
+          "</span></div>";
+      }
+      prepEl.innerHTML =
+        '<div class="prep-hd"><span class="prep-spin"></span><span class="prep-ttl">Preparando peças…</span>' +
+        '<span class="prep-n">0/' + prepTotal + "</span></div>" +
+        '<div class="prep-list">' + rows + "</div>" +
+        '<div class="prep-bar"><i></i></div>';
+      msgs.appendChild(prepEl);
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function setPrepState(id, state) {
+      if (!prepEl) return;
+      const row = prepEl.querySelector('.prep-row[data-id="' + CSS.escape(id) + '"]');
+      if (!row) return;
+      const ic = row.querySelector(".prep-ic");
+      ic.className = "prep-ic " + state;
+      ic.innerHTML = state === "done" ? SVG.check : "";
+      if (state === "done") {
+        prepDone++;
+        prepEl.querySelector(".prep-n").textContent = prepDone + "/" + prepTotal;
+        prepEl.querySelector(".prep-bar i").style.width =
+          Math.round((prepDone / prepTotal) * 100) + "%";
+      }
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function endPrep(immediate) {
+      if (!prepEl) return;
+      const el = prepEl;
+      prepEl = null;
+      if (immediate) {
+        el.remove();
+        return;
+      }
+      // confirma visualmente e recolhe
+      el.querySelector(".prep-ttl").textContent =
+        prepTotal === 1 ? "Peça anexada à conversa" : prepTotal + " peças anexadas à conversa";
+      el.querySelector(".prep-spin").outerHTML =
+        '<span class="prep-okic">' + SVG.check + "</span>";
+      el.classList.add("ok");
+      setTimeout(() => {
+        el.classList.add("fade");
+        setTimeout(() => el.remove(), 350);
+      }, 1100);
+    }
 
     // Overlay "configure sua chave"
     let needkeyEl = null;
@@ -332,11 +626,13 @@ var PjePanel = (function () {
         msgs.innerHTML = "";
         hintEl = null;
         needkeyEl = null;
+        prepEl = null;
         statusEl.textContent = "";
         showEmptyHint();
       },
       setDocs(docs) {
         const cur = new Set(getSelected());
+        allDocs = docs.slice();
         doclist.innerHTML = "";
         for (const d of docs) {
           const row = document.createElement("label");
@@ -348,22 +644,50 @@ var PjePanel = (function () {
           if (cur.has(d.id)) row.querySelector("input").checked = true;
           doclist.appendChild(row);
         }
-        countEl.textContent = docs.length ? "(" + docs.length + ")" : "";
         if (!docs.length) {
           doclist.innerHTML = '<div class="empty">Nenhuma peça encontrada nesta tela.</div>';
         }
+        syncSelection();
+        if (mention) updateMention(); // popup aberto: reflete a lista atualizada
       },
-      addMessage(role, text) {
+      // attachments: títulos das peças anexadas neste turno (opcional)
+      addMessage(role, text, attachments) {
         clearEmptyHint();
         const el = document.createElement("div");
         el.className = "msg " + role;
-        if (role === "assistant") el.innerHTML = renderMd(text);
-        else el.textContent = text;
+        if (role === "assistant") {
+          if (text) {
+            el.innerHTML = renderMd(text);
+          } else {
+            // aguardando o modelo: indicador de digitação
+            el.classList.add("typing");
+            el.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+          }
+        } else {
+          const txt = document.createElement("div");
+          txt.className = "txt";
+          txt.textContent = text;
+          el.appendChild(txt);
+          if (attachments && attachments.length) {
+            const at = document.createElement("div");
+            at.className = "msg-atts";
+            for (const t of attachments) {
+              const c = document.createElement("span");
+              c.className = "chip-mini";
+              c.innerHTML =
+                SVG.doc + "<span title=\"" + escapeHtml(t) + "\">" +
+                escapeHtml(tituloCurto(t)) + "</span>";
+              at.appendChild(c);
+            }
+            el.appendChild(at);
+          }
+        }
         msgs.appendChild(el);
         msgs.scrollTop = msgs.scrollHeight;
         return el;
       },
       updateAssistant(el, fullText) {
+        el.classList.remove("typing");
         el.innerHTML = renderMd(fullText);
         msgs.scrollTop = msgs.scrollHeight;
       },
@@ -371,6 +695,9 @@ var PjePanel = (function () {
         if (el) el.remove();
         showEmptyHint();
       },
+      startPrep,
+      setPrepState,
+      endPrep,
       setStatus(s) {
         statusEl.textContent = s || "";
       },

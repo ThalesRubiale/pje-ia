@@ -45,10 +45,17 @@
     refreshKey(); // re-renderiza CTA de chave se necessário
   });
 
+  let docsIndex = new Map(); // id -> {id, titulo} (para chips e card de progresso)
   function refresh() {
-    panel.setDocs(PJE.listarDocumentos());
+    const docs = PJE.listarDocumentos();
+    docsIndex = new Map(docs.map((d) => [d.id, d]));
+    panel.setDocs(docs);
   }
   refresh();
+
+  function metaDe(id) {
+    return docsIndex.get(id) || { id, titulo: "Peça " + id };
+  }
 
   // Anexa o observer à timeline. Se #divTimeLine ainda não existe (a página pode
   // renderizá-la após o document_idle), espera-a surgir e então observa.
@@ -70,19 +77,17 @@
     bodyObs.observe(document.documentElement, { childList: true, subtree: true });
   }
 
-  // Baixa as peças com concorrência limitada (3 por vez), com progresso.
+  // Baixa as peças com concorrência limitada (3 por vez), com progresso por
+  // peça no card de preparo (spinner -> check + barra de progresso).
   async function baixarSelecionadas(ids) {
-    let done = 0;
-    const report = () =>
-      panel.setStatus(`Baixando peças ${done}/${ids.length}…`);
-    report();
+    panel.startPrep(ids.map(metaDe));
     const queue = ids.slice();
     async function worker() {
       while (queue.length) {
         const id = queue.shift();
+        panel.setPrepState(id, "loading");
         if (!docsCache.has(id)) docsCache.set(id, await PJE.baixar(id));
-        done++;
-        report();
+        panel.setPrepState(id, "done");
       }
     }
     await Promise.all([worker(), worker(), worker()]);
@@ -101,6 +106,7 @@
 
   // Monta os blocos das peças; marca o último com cache_control para que os
   // turnos seguintes reaproveitem o prefixo (economia de ~90% nos tokens).
+  // O "title" nos blocos document permite ao modelo citar a peça pelo nome.
   function montarBlocos(ids) {
     const blocks = [];
     let totalB64 = 0;
@@ -111,11 +117,12 @@
         blocks.push({
           type: "document",
           source: { type: "base64", media_type: "application/pdf", data: d.b64 },
+          title: metaDe(id).titulo,
         });
       } else {
         blocks.push({
           type: "text",
-          text: `[Documento ${id}]:\n` + d.text.slice(0, 60000),
+          text: `[${metaDe(id).titulo}]:\n` + d.text.slice(0, 60000),
         });
       }
     }
@@ -158,16 +165,22 @@
   panel.onSend(async (text, selectedIds) => {
     if (busy) return;
     if (selectedIds.length === 0) {
-      panel.setStatus("Marque ao menos uma peça na lista acima antes de perguntar.");
+      panel.setStatus("Marque ao menos uma peça — na lista acima ou digitando @ no campo.");
       return;
     }
     busy = true;
-    panel.addMessage("user", text);
-    panel.lockInput(true);
-    panel.setStatus("");
 
     const key = selectedIds.slice().sort().join(",");
     const attach = key !== lastSentKey; // (re)anexa peças quando a seleção muda
+    // mostra na mensagem quais peças entram no contexto neste turno
+    panel.addMessage(
+      "user",
+      text,
+      attach ? selectedIds.map((id) => metaDe(id).titulo) : null
+    );
+    panel.lockInput(true);
+    panel.setStatus("");
+
     let assistantEl = null;
     let acc = "";
     let truncated = false;
@@ -178,6 +191,7 @@
         await baixarSelecionadas(selectedIds);
         stripOldCacheControl();
         userContent = [...montarBlocos(selectedIds), { type: "text", text }];
+        panel.endPrep(); // confirma "peças anexadas" só depois de validar o tamanho
       } else {
         userContent = text;
       }
@@ -216,6 +230,7 @@
         panel.setStatus("O modelo não retornou texto. Tente novamente.");
       }
     } catch (e) {
+      panel.endPrep(true); // remove o card de preparo, se ainda estiver na tela
       panel.setStatus("Erro: " + (e && e.message ? e.message : e));
       // remove a bolha vazia do assistente, se houver
       if (assistantEl && !acc) panel.removeMessage(assistantEl);

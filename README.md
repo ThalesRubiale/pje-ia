@@ -22,8 +22,12 @@ resumos, linhas do tempo, partes, pedidos, provas — direto na página do proce
 
 - **Chat sobre os autos** — converse com o Claude sobre as peças selecionadas, com histórico multi-turno.
 - **Seleção de peças** — checkboxes por documento; só o que você marcar é enviado.
+- **Menção com `@`** — digite `@` no campo de pergunta para buscar e marcar peças sem sair do teclado: filtro que ignora acentos (`@peticao` acha "Petição Inicial"), navegação por `↑↓`, `Enter` marca/desmarca, `Esc` fecha.
+- **Contexto sempre visível** — chips acima do campo mostram as peças marcadas (com `×` para remover), o contador indica `x/y no contexto`, e cada pergunta exibe quais peças foram anexadas naquele turno.
+- **Progresso por peça** — ao preparar a análise, um card mostra o estado de cada peça (aguardando → baixando → pronta) com barra de progresso, e a resposta chega com indicador de digitação animado.
 - **OCR nativo** — peças digitalizadas (imagem) são lidas pelo próprio Claude, sem OCR externo.
 - **Respostas formatadas** — markdown completo: tabelas, listas, títulos e citações.
+- **Citações pelo nome da peça** — cada PDF é enviado com o título da peça, para o modelo citar "na Contestação…" em vez de números de id.
 - **Streaming** — a resposta aparece em tempo real, com indicador de raciocínio.
 - **Modo expandido** — painel em tela cheia com duas colunas para leitura confortável.
 - **Prompt caching** — os PDFs anexados são cacheados pela API (~90% mais barato nos turnos seguintes).
@@ -44,13 +48,13 @@ resumos, linhas do tempo, partes, pedidos, provas — direto na página do proce
 
 1. Faça login no PJe e abra os **autos de um processo** (tela da linha do tempo de documentos).
 2. Clique no botão **⚖️ Analisar com IA** no canto inferior direito da página.
-3. Marque as peças que quer incluir na análise.
+3. Marque as peças que quer incluir na análise — pela lista, ou digitando **`@`** no próprio campo de pergunta (ex.: `@contestação`).
 4. Pergunte — por exemplo:
    - *"Resuma o pedido da inicial e os argumentos da contestação"*
    - *"Monte uma tabela com a linha do tempo dos atos"*
    - *"Quais provas foram juntadas e o que cada uma demonstra?"*
 
-**Atalhos:** `Enter` envia · `Shift+Enter` quebra linha · botão `⤢` expande o painel · `↺` inicia nova conversa.
+**Atalhos:** `@` cita peças no campo · `Enter` envia · `Shift+Enter` quebra linha · com o popup `@` aberto: `↑↓` navega, `Enter`/`Tab` marca, `Esc` fecha · botão `⤢` expande o painel · `↺` inicia nova conversa.
 
 ## 🏗️ Arquitetura
 
@@ -69,7 +73,7 @@ flowchart LR
 | Módulo | Papel |
 |---|---|
 | `src/pje.js` | Lista as peças na timeline e baixa cada uma pelo endpoint REST do PJe (sessão do usuário). Ativa peças "não abertas" automaticamente. |
-| `src/panel.js` / `panel.css` | UI do chat em Shadow DOM (isolada do CSS do PJe), com renderizador markdown próprio e seguro. |
+| `src/panel.js` / `panel.css` | UI do chat em Shadow DOM (isolada do CSS do PJe): seletor de peças, menção `@`, chips de contexto, card de progresso e renderizador markdown próprio e seguro. |
 | `src/content.js` | Orquestra: downloads paralelos, cache por peça, prompt caching, conversa multi-turno. |
 | `src/background.js` + `claude.js` | Service worker que guarda a chave e chama a API da Anthropic com streaming. **A chave nunca é exposta à página.** |
 | `src/popup.html` | Configuração em 1 clique no ícone da barra (chave, modelo, guia de primeiros passos). |
