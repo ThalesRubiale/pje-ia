@@ -412,6 +412,10 @@ var PjePanel = (function () {
 
     // Ações rápidas: preenchem o campo com um prompt pronto para revisão
     const quickEl = $(".quick");
+    const quickLab = document.createElement("span");
+    quickLab.className = "ctxlab";
+    quickLab.textContent = "Perguntas prontas";
+    quickEl.appendChild(quickLab);
     for (const a of ACOES_RAPIDAS) {
       const b = document.createElement("button");
       b.className = "quick-btn";
@@ -528,7 +532,7 @@ var PjePanel = (function () {
       ctxbar.hidden = false;
       const lab = document.createElement("span");
       lab.className = "ctxlab";
-      lab.textContent = "Contexto";
+      lab.textContent = "Peças no contexto";
       ctxbar.appendChild(lab);
       for (const d of sel) {
         const chip = document.createElement("span");
@@ -954,8 +958,12 @@ var PjePanel = (function () {
       onGerarDoc(cb) {
         gerarDocCb = cb;
       },
-      setStatus(s) {
+      // busy=true mostra um spinner antes do texto (trabalho em andamento —
+      // análise, geração de documento, upload…), para o usuário ver que a
+      // extensão está trabalhando e não travada.
+      setStatus(s, busy) {
         statusEl.textContent = s || "";
+        statusEl.classList.toggle("busy", !!busy && !!s);
       },
       // Medidor de contexto da conversa: barra + resumo (tokens e páginas
       // acumulados no request vs. limites do modelo). null esconde.
@@ -982,6 +990,11 @@ var PjePanel = (function () {
       lockInput(b) {
         inEl.disabled = b;
         sendBtn.disabled = b;
+        // trava também as ações — clicar durante uma resposta não faz nada,
+        // e botão ativo-porém-morto confunde
+        tglSearch.disabled = b;
+        btnDocx.disabled = b;
+        for (const q of quickEl.querySelectorAll("button")) q.disabled = b;
       },
     };
   }

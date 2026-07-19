@@ -45,7 +45,11 @@ Haiku) e `effort` (não suportado no Haiku).
   turnos seguintes. Em fallback (sem blocos), texto puro com os placeholders de citação
   removidos.
 - **Dois tipos de request, nunca misturados**: *chat/busca* (documentos + citações +
-  web tools quando o toggle "Jurisprudência" está ligado) e *gerar documento* (skill
+  web tools quando o toggle "Jurisprudência" está ligado — e, uma vez usadas na
+  conversa, as web tools seguem declaradas nos turnos seguintes mesmo com o toggle
+  desligado (`buscaNaConversa`): trocar o conjunto de tools invalidaria o cache de
+  prefixo e arriscaria rejeição do histórico com blocos de ferramenta) e *gerar
+  documento* (skill
   `docx` + `code_execution_20260521` + betas `code-execution-2025-08-25`/
   `skills-2025-10-02`/`files-api-2025-04-14` — o `container` com skills exige a beta de
   code execution junto com a de skills).

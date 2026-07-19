@@ -72,6 +72,11 @@
   // request (o histórico não pode ser editado) e estourava os limites já no
   // segundo envio. Peça desmarcada permanece no histórico até "Nova conversa".
   let pecasNaConversa = new Set();
+  // A busca web foi usada nesta conversa: o histórico contém blocos de
+  // ferramenta, então as tools continuam declaradas nos turnos seguintes
+  // (mesmo com o toggle desligado) — remover trocaria o conjunto de tools,
+  // invalidando o cache de prefixo e arriscando rejeição do histórico.
+  let buscaNaConversa = false;
   let busy = false;
 
   const panel = PjePanel.mount();
@@ -93,10 +98,24 @@
   let modelCaps = null;
   function refreshCaps() {
     chrome.runtime.sendMessage({ type: "caps" }, (r) => {
+      void chrome.runtime.lastError; // worker pode estar acordando — sem ruído
       if (r && r.caps) modelCaps = r.caps;
     });
   }
   refreshCaps();
+
+  // Garante as capacidades ANTES de validar limites (o primeiro envio pode
+  // chegar antes do refreshCaps inicial responder — a guarda ficaria muda).
+  function garantirCaps() {
+    if (modelCaps) return Promise.resolve();
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "caps" }, (r) => {
+        void chrome.runtime.lastError;
+        if (r && r.caps) modelCaps = r.caps;
+        resolve(); // sem caps segue mesmo assim: count_tokens e a API guardam
+      });
+    });
+  }
 
   // Estado da chave: mostra CTA de configuração quando ausente e reage a mudanças
   // (ex.: quando o usuário salva a chave pelo popup, sem recarregar a página).
@@ -114,6 +133,7 @@
     if (busy) return; // não zera no meio de uma resposta
     conversation = [];
     pecasNaConversa.clear();
+    buscaNaConversa = false;
     panel.setContexto(null);
     panel.clearMessages();
     refreshKey(); // re-renderiza CTA de chave se necessário
@@ -183,7 +203,7 @@
       return d && d.kind === "pdf" && !d.fileId;
     });
     if (!pend.length) return;
-    panel.setStatus("Enviando peças para análise…");
+    panel.setStatus("Enviando peças para análise…", true);
     const queue = pend.slice();
     async function w() {
       while (queue.length) {
@@ -434,6 +454,7 @@
     let truncated = false;
 
     try {
+      await garantirCaps(); // limites do modelo antes de qualquer validação
       let userContent;
       let paginas = 0;
       if (attach) {
@@ -448,7 +469,7 @@
         userContent = text;
       }
 
-      panel.setStatus("Estimando o tamanho do contexto…");
+      panel.setStatus("Estimando o tamanho do contexto…", true);
       const est = await estimarContexto(
         [...conversation, { role: "user", content: userContent }],
         attach
@@ -469,7 +490,7 @@
       conversation.push({ role: "user", content: userContent });
       for (const id of novas) pecasNaConversa.add(id);
 
-      panel.setStatus("Analisando…" + infoCtx);
+      panel.setStatus("Analisando…" + infoCtx, true);
       assistantEl = panel.addMessage("assistant", "");
       // Citações deste turno: marcadores [n] entram no texto via placeholders
       // (área de uso privado do Unicode — sobrevivem intactos ao escape do
@@ -480,7 +501,7 @@
       // Nunca combinamos ferramentas web com code_execution no mesmo request
       // (as versões _20260209 já embutem execução para filtragem dinâmica).
       const opts = {};
-      if (panel.isSearchOn() && modelCaps) {
+      if ((panel.isSearchOn() || buscaNaConversa) && modelCaps) {
         opts.tools = toolsBusca();
         opts.betas = BETAS_CHAT.concat(
           modelCaps.webFetch === "web_fetch_20250910" ? ["web-fetch-2025-09-10"] : []
@@ -498,7 +519,7 @@
             thinkAcc += t;
             panel.setThinking(assistantEl, thinkAcc);
           }
-          if (!acc) panel.setStatus("Raciocinando sobre as peças…");
+          if (!acc) panel.setStatus("Raciocinando sobre as peças…", true);
         },
         onCitation(c) {
           const k = chaveCitacao(c);
@@ -513,9 +534,9 @@
         },
         onTool(name) {
           if (acc) return; // ferramenta no meio do texto: não sobrepõe a resposta
-          if (name === "web_search") panel.setStatus("Pesquisando jurisprudência na web…");
-          else if (name === "web_fetch") panel.setStatus("Lendo página de fonte jurídica…");
-          else panel.setStatus("Executando ferramenta…");
+          if (name === "web_search") panel.setStatus("Pesquisando jurisprudência na web…", true);
+          else if (name === "web_fetch") panel.setStatus("Lendo página de fonte jurídica…", true);
+          else panel.setStatus("Executando ferramenta…", true);
         },
         onTrunc() {
           truncated = true;
@@ -533,6 +554,8 @@
               ? fim.content
               : [{ type: "text", text: acc.replace(/\uE000\d+\uE001/g, "") }],
         });
+        // turno gravado com tools declaradas \u2192 mant\u00EA-las at\u00E9 "Nova conversa"
+        if (opts.tools) buscaNaConversa = true;
         let st = "";
         if (truncated)
           st = "A resposta atingiu o tamanho máximo — peça para continuar, se necessário.";
@@ -632,10 +655,10 @@
             panel.updateAssistant(assistantEl, acc);
           },
           onThinking() {
-            if (!acc) panel.setStatus("Planejando o documento…");
+            if (!acc) panel.setStatus("Planejando o documento…", true);
           },
           onTool() {
-            if (!acc) panel.setStatus("Gerando o arquivo .docx…");
+            if (!acc) panel.setStatus("Gerando o arquivo .docx…", true);
           },
           onFile(f) {
             arquivo = f;

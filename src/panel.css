@@ -469,6 +469,19 @@
 .msg .cites .cite-row { font-size: 11px; color: var(--muted); }
 .msg .cites .cit { cursor: default; }
 
+/* ---------- Status "trabalhando": spinner + destaque ---------- */
+.status.busy { color: var(--text); font-weight: 600; }
+.status.busy::before {
+  content: ""; display: inline-block; width: 10px; height: 10px;
+  border: 2px solid var(--gold); border-top-color: transparent;
+  border-radius: 50%; margin-right: 7px; vertical-align: -1px;
+  animation: pje-ia-girar 0.8s linear infinite;
+}
+@keyframes pje-ia-girar { to { transform: rotate(360deg); } }
+
+/* botões travados durante uma resposta */
+.toolbar button:disabled, .quick-btn:disabled { opacity: 0.45; cursor: default; }
+
 /* ---------- Medidor de contexto da conversa ---------- */
 .gauge { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; cursor: help; }
 .gauge-bar {
