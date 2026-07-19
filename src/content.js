@@ -253,13 +253,19 @@
 
   // Pré-voo gratuito de tokens (count_tokens): estima o tamanho do contexto e
   // bloqueia acima de 90% da janela do modelo. Falha da estimativa não bloqueia.
-  async function estimarContexto(messages, comPecasNovas) {
+  // IMPORTANTE: recebe as MESMAS tools/betas do turno — depois de uma busca, o
+  // histórico contém blocos de ferramenta e o count_tokens sem as tools
+  // declaradas seria rejeitado (o medidor e a guarda de 90% morreriam mudos).
+  async function estimarContexto(messages, comPecasNovas, opts) {
     let r = null;
     try {
-      r = await rpc({
-        type: "countTokens",
-        payload: { system: SYSTEM_PROMPT, messages, betas: BETAS_CHAT },
-      });
+      const payload = {
+        system: SYSTEM_PROMPT,
+        messages,
+        betas: (opts && opts.betas) || BETAS_CHAT,
+      };
+      if (opts && opts.tools) payload.tools = opts.tools;
+      r = await rpc({ type: "countTokens", payload });
     } catch {
       return null; // estimativa é opcional
     }
@@ -278,40 +284,21 @@
     return { tokens: r.tokens, ctxTokens: r.contextTokens, pct };
   }
 
-  // A API devolve nas citações campos que NÃO aceita de volta num request
-  // (ex.: file_id dentro de page_location → 400 "Extra inputs are not
-  // permitted" ao reenviar o histórico). Antes de gravar a resposta na
-  // conversa, cada citação é reduzida à whitelist de campos do seu tipo.
-  const CAMPOS_CITACAO = {
-    page_location: ["type", "cited_text", "document_index", "document_title", "start_page_number", "end_page_number"],
-    char_location: ["type", "cited_text", "document_index", "document_title", "start_char_index", "end_char_index"],
-    content_block_location: ["type", "cited_text", "document_index", "document_title", "start_block_index", "end_block_index"],
-    web_search_result_location: ["type", "cited_text", "url", "title", "encrypted_index"],
-  };
+  // A API rejeita citações reenviadas no histórico do assistant: além de
+  // campos extras (ex.: file_id em page_location → 400 "Extra inputs are not
+  // permitted"), ela REVALIDA os índices (document_index) contra o layout do
+  // request atual — e com o anexo incremental (documentos novos entram em
+  // mensagens posteriores) essa revalidação falha (400 "Invalid citation
+  // indices: Document not found for placeholder citation"). O caminho robusto
+  // é remover o campo `citations` dos blocos de texto antes de gravar no
+  // histórico: bloco de texto sem citações é sempre válido, o texto integral
+  // segue visível ao modelo e a UI mantém as citações renderizadas do turno.
   function sanearCitacoes(blocks) {
     return blocks.map((b) => {
       if (!b || b.type !== "text" || b.citations == null) return b;
-      // lista vazia (ou não-lista): melhor omitir o campo do que reenviar
-      if (!Array.isArray(b.citations) || !b.citations.length) {
-        const semCit = Object.assign({}, b);
-        delete semCit.citations;
-        return semCit;
-      }
-      return Object.assign({}, b, {
-        citations: b.citations.map((c) => {
-          const campos = c && CAMPOS_CITACAO[c.type];
-          if (!campos) {
-            // tipo de citação desconhecido: remove ao menos os campos que a
-            // API sabidamente emite mas não aceita de volta
-            const limpa = Object.assign({}, c);
-            delete limpa.file_id;
-            return limpa;
-          }
-          const limpa = {};
-          for (const k of campos) if (c[k] !== undefined) limpa[k] = c[k];
-          return limpa;
-        }),
-      });
+      const semCit = Object.assign({}, b);
+      delete semCit.citations;
+      return semCit;
     });
   }
 
@@ -506,10 +493,25 @@
         userContent = text;
       }
 
+      // Busca de jurisprudência: ferramentas web entram com o toggle ligado —
+      // e, uma vez usadas na conversa, seguem declaradas nos turnos seguintes
+      // (o histórico contém blocos de ferramenta; removê-las invalidaria o
+      // cache de prefixo e arriscaria rejeição do histórico). Nunca combinamos
+      // ferramentas web com code_execution no mesmo request (as versões
+      // _20260209 já embutem execução para filtragem dinâmica).
+      const opts = {};
+      if ((panel.isSearchOn() || buscaNaConversa) && modelCaps) {
+        opts.tools = toolsBusca();
+        opts.betas = BETAS_CHAT.concat(
+          modelCaps.webFetch === "web_fetch_20250910" ? ["web-fetch-2025-09-10"] : []
+        );
+      }
+
       panel.setStatus("Estimando o tamanho do contexto…", true);
       const est = await estimarContexto(
         [...conversation, { role: "user", content: userContent }],
-        attach
+        attach,
+        opts
       );
       if (attach) panel.endPrep(); // confirma "peças anexadas" após validar limites
       let infoCtx = "";
@@ -535,16 +537,6 @@
       const cites = [];
       let statusFerramenta = false; // há status de busca/ferramenta na tela
       const citeKeys = new Map();
-      // Busca de jurisprudência: ferramentas web entram só com o toggle ligado.
-      // Nunca combinamos ferramentas web com code_execution no mesmo request
-      // (as versões _20260209 já embutem execução para filtragem dinâmica).
-      const opts = {};
-      if ((panel.isSearchOn() || buscaNaConversa) && modelCaps) {
-        opts.tools = toolsBusca();
-        opts.betas = BETAS_CHAT.concat(
-          modelCaps.webFetch === "web_fetch_20250910" ? ["web-fetch-2025-09-10"] : []
-        );
-      }
       let thinkAcc = "";
       const fim = await stream(conversation, {
         onDelta(delta) {

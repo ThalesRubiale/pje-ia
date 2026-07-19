@@ -43,10 +43,15 @@ Haiku) e `effort` (não suportado no Haiku).
 - **Assistant no histórico é SEMPRE array de blocos** (`response.content` completo), nunca
   string: a API exige thinking assinado intacto e os blocos de ferramenta/citações nos
   turnos seguintes. Em fallback (sem blocos), texto puro com os placeholders de citação
-  removidos. **Citações são saneadas antes de ir ao histórico** (`sanearCitacoes` em
-  `content.js`): a resposta traz campos que o request rejeita (ex.: `file_id` em
-  `page_location` → 400 "Extra inputs are not permitted"); cada citação é reduzida à
-  whitelist de campos do seu tipo.
+  removidos. **Citações NUNCA voltam à API**: a resposta traz campos que o request
+  rejeita (`file_id` em `page_location` → 400 "Extra inputs are not permitted") e,
+  pior, a API revalida os `document_index` contra o layout do request atual — com o
+  anexo incremental essa revalidação falha (400 "Invalid citation indices: Document
+  not found for placeholder citation", sempre na 2ª mensagem). Por isso o campo
+  `citations` é REMOVIDO dos blocos de texto do assistant antes de qualquer reenvio:
+  `sanearCitacoes` (content.js) ao gravar no histórico e `stripCitacoes`
+  (background.js) nas continuações `pause_turn`. A UI mantém as citações
+  renderizadas do turno; o modelo segue vendo o texto integral.
 - **Dois tipos de request, nunca misturados**: *chat/busca* (documentos + citações +
   web tools quando o toggle "Jurisprudência" está ligado — e, uma vez usadas na
   conversa, as web tools seguem declaradas nos turnos seguintes mesmo com o toggle
@@ -64,8 +69,10 @@ Haiku) e `effort` (não suportado no Haiku).
   upload (aí vale o teto `MAX_TOTAL_B64_CHARS` de 24 MB).
 - **Guardas de processo grande**: contagem de páginas por heurística no binário do PDF
   (`pje.js`) bloqueia acima de `MODEL_CAPS.maxPages` ANTES do envio; `count_tokens`
-  (gratuito) estima o contexto e bloqueia acima de 90% da janela. Tratar também
-  `stop_reason: model_context_window_exceeded`.
+  (gratuito) estima o contexto e bloqueia acima de 90% da janela — e recebe as
+  MESMAS tools/betas do turno (histórico com blocos de ferramenta exige as tools
+  declaradas também no count_tokens, senão o pré-voo falha mudo e o medidor some).
+  Tratar também `stop_reason: model_context_window_exceeded`.
 - **Citações**: `citations:{enabled:true}` em TODOS os blocos document (regra da API:
   tudo-ou-nada); peças HTML viram document com source text (citáveis por
   `char_location`). No stream, `citations_delta` gera marcadores por **placeholder PUA**

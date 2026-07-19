@@ -126,6 +126,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           model,
           system: msg.payload.system,
           messages: msg.payload.messages,
+          tools: msg.payload.tools,
           betas: msg.payload.betas,
         });
         sendResponse({ tokens, contextTokens: capsDe(model).contextTokens });
@@ -136,6 +137,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 });
+
+// Remove o campo citations dos blocos de texto antes de reenviar conteúdo do
+// assistant à API: citações reenviadas são rejeitadas (400 "Extra inputs" /
+// "Invalid citation indices"). Bloco de texto sem citações é sempre válido.
+function stripCitacoes(blocks) {
+  return blocks.map((b) => {
+    if (!b || b.type !== "text" || b.citations == null) return b;
+    const c = Object.assign({}, b);
+    delete c.citations;
+    return c;
+  });
+}
 
 // Executa um turno completo (com continuações pause_turn), emitindo o progresso
 // pelo Port. Retorna {content, stopReason}; lança erro em falha ou recusa.
@@ -188,9 +201,12 @@ async function executarTurno(port, payload) {
       container = Object.assign({}, payload.container, { id: final.containerId });
     }
     if (stopReason !== "pause_turn") break;
-    // o servidor pausou o loop de ferramentas: reenvia com o turno parcial
+    // o servidor pausou o loop de ferramentas: reenvia com o turno parcial.
+    // As citações NÃO voltam no reenvio: a API rejeita citações em conteúdo
+    // de assistant (campos extras e revalidação de índices) — mesma regra do
+    // histórico multi-turno no content script.
     messages = payload.messages.concat([
-      { role: "assistant", content: contentAcumulado },
+      { role: "assistant", content: stripCitacoes(contentAcumulado) },
     ]);
   }
 

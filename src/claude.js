@@ -242,6 +242,8 @@ function bufToB64(buf) {
 // Conta os tokens de um request (endpoint gratuito) — pré-voo antes do envio.
 export async function countTokens(req) {
   const body = { model: req.model, system: req.system, messages: req.messages };
+  // histórico com blocos de ferramenta exige as tools declaradas também aqui
+  if (req.tools && req.tools.length) body.tools = req.tools;
   const resp = await fetch(API + "/messages/count_tokens", {
     method: "POST",
     headers: headers(req.apiKey, req.betas),
