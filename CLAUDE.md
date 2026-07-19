@@ -73,6 +73,16 @@ texto e o checkbox correspondente é alternado. Detalhes fáceis de quebrar:
 - Para testar no PJe de verdade: recarregar a extensão em `chrome://extensions` e
   recarregar a aba do processo (o content script tem guard `window.__pjeIaLoaded`).
 
+## Categorias de peças (destaque visual)
+
+`CATEGORIAS` em `panel.js` classifica cada título por regex **sobre o texto normalizado
+sem acentos** (`norm()`): decisões (dourado), audiências (verde), petições (azul),
+provas (violeta), outros (neutro). A primeira regra que casar vence — cuidado com
+sobreposições ("ata notarial" é prova, tratada com lookahead negativo na regra de
+audiências). As cores vivem em variáveis `--cat-*` no `panel.css` e aparecem na lista
+lateral (dot + peso da fonte), nos chips e no popup `@`; a legenda só é exibida no modo
+expandido.
+
 ## Convenções
 
 - Comentários e strings de UI em português do Brasil (com acentuação correta).

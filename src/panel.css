@@ -11,6 +11,12 @@
   --line: #e7dfcf;
   --text: #22303f;
   --muted: #6c7889;
+  /* categorias de peças (destaque na lista, chips e popup @) */
+  --cat-decisao: #a8752f;   /* dourado queimado — atos do juízo */
+  --cat-audiencia: #2e7d4f; /* verde — atas e audiências */
+  --cat-peticao: #2f5583;   /* azul — peças das partes */
+  --cat-prova: #7a5c94;     /* violeta — laudos e pareceres */
+  --cat-outro: #c3bcab;     /* neutro — demais documentos */
   position: fixed;
   right: 18px;
   bottom: 18px;
@@ -129,14 +135,46 @@
 .docs-hd strong { font-family: Georgia, serif; font-weight: 700; }
 .docs-hd .all { font-weight: 500; color: var(--muted); cursor: pointer; font-size: 12px; }
 .count { font-size: 11px; color: var(--muted); margin-left: 6px; }
+/* legenda das categorias — só no modo expandido, onde há espaço */
+.legend { display: none; }
+.wrap.expanded .legend {
+  display: flex; flex-wrap: wrap; gap: 4px 12px;
+  font-size: 10.5px; color: var(--muted);
+  padding: 2px 4px 8px;
+}
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.l-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
 .doclist { overflow-y: auto; font-size: 12.8px; }
 .docrow {
-  display: flex; gap: 8px; align-items: flex-start;
-  padding: 5px 4px; border-radius: 6px; cursor: pointer;
+  display: flex; gap: 8px; align-items: center;
+  padding: 5px 6px; border-radius: 7px; cursor: pointer;
 }
 .docrow:hover { background: #f4f1e9; }
-.docrow input { margin-top: 2px; accent-color: var(--gold-2); }
-.docrow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.docrow input { flex: none; accent-color: var(--gold-2); width: 13px; height: 13px; }
+.d-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--cat-outro); }
+.d-t {
+  flex: 1; min-width: 0;
+  display: flex; align-items: baseline; gap: 7px;
+  overflow: hidden;
+}
+.d-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.d-id { flex: none; font-family: Consolas, monospace; font-size: 10px; color: #a9a294; }
+
+/* cores por categoria (dot da lista + legenda) */
+.docrow.cat-decisao .d-dot,   .l-dot.cat-decisao   { background: var(--cat-decisao); }
+.docrow.cat-audiencia .d-dot, .l-dot.cat-audiencia { background: var(--cat-audiencia); }
+.docrow.cat-peticao .d-dot,   .l-dot.cat-peticao   { background: var(--cat-peticao); }
+.docrow.cat-prova .d-dot,     .l-dot.cat-prova     { background: var(--cat-prova); }
+
+/* peças importantes: nome em peso maior; decisões também em cor */
+.docrow.cat-decisao .d-nm,
+.docrow.cat-audiencia .d-nm,
+.docrow.cat-peticao .d-nm,
+.docrow.cat-prova .d-nm { font-weight: 600; }
+.docrow.cat-decisao .d-nm { color: #7a5115; }
+.docrow.cat-outro .d-nm { color: #55606e; }
+
 .empty { color: var(--muted); padding: 8px 4px; font-size: 12.5px; }
 .docs-tip { font-size: 11px; color: var(--muted); padding-top: 6px; border-top: 1px dashed var(--line); margin-top: 6px; }
 
@@ -321,16 +359,21 @@
 .chip.new { animation: chip-in 0.18s ease-out; }
 @keyframes chip-in { from { opacity: 0; transform: scale(0.85); } }
 .chip svg { color: var(--gold-2); flex: none; }
+.chip.cat-decisao svg   { color: var(--cat-decisao); }
+.chip.cat-audiencia svg { color: var(--cat-audiencia); }
+.chip.cat-peticao svg   { color: var(--cat-peticao); }
+.chip.cat-prova svg     { color: var(--cat-prova); }
 .chip-t {
   max-width: 170px; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; font-weight: 600;
 }
 .chip-x {
   border: none; background: transparent; cursor: pointer;
-  color: #a89a7c; width: 16px; height: 16px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center; padding: 0;
+  color: #a89a7c; width: 17px; height: 17px; border-radius: 50%;
+  flex: none; display: flex; align-items: center; justify-content: center; padding: 0;
+  transition: background 0.12s, color 0.12s;
 }
-.chip-x:hover { background: #e9dfc8; color: #6b5836; }
+.chip-x:hover { background: #e4d8bc; color: #4d3d20; }
 
 /* ----- Popup de menção @ ----- */
 .mention {
@@ -357,7 +400,13 @@
   font-size: 12.5px; color: var(--text);
 }
 .mrow svg { color: var(--gold-2); flex: none; }
+.mrow.cat-decisao svg   { color: var(--cat-decisao); }
+.mrow.cat-audiencia svg { color: var(--cat-audiencia); }
+.mrow.cat-peticao svg   { color: var(--cat-peticao); }
+.mrow.cat-prova svg     { color: var(--cat-prova); }
+.mrow.cat-outro svg     { color: #b6ad99; }
 .mrow .t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow.cat-decisao .t, .mrow.cat-audiencia .t { font-weight: 600; }
 .mrow.active { background: #f6f1e4; }
 .mrow-more {
   padding: 6px 9px 5px; font-size: 11px; color: var(--muted);
@@ -387,3 +436,23 @@
 }
 .send:disabled, .in:disabled { opacity: 0.5; cursor: default; }
 .hint-key { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* ---------- Scrollbars temáticas (Chrome) ---------- */
+.doclist::-webkit-scrollbar,
+.msgs::-webkit-scrollbar,
+.mention-list::-webkit-scrollbar,
+.ctxbar::-webkit-scrollbar { width: 8px; }
+.doclist::-webkit-scrollbar-track,
+.msgs::-webkit-scrollbar-track,
+.mention-list::-webkit-scrollbar-track,
+.ctxbar::-webkit-scrollbar-track { background: transparent; }
+.doclist::-webkit-scrollbar-thumb,
+.msgs::-webkit-scrollbar-thumb,
+.mention-list::-webkit-scrollbar-thumb,
+.ctxbar::-webkit-scrollbar-thumb {
+  background: #d9d2bf; border-radius: 4px;
+  border: 2px solid transparent; background-clip: content-box;
+}
+.doclist::-webkit-scrollbar-thumb:hover,
+.msgs::-webkit-scrollbar-thumb:hover,
+.mention-list::-webkit-scrollbar-thumb:hover { background-color: #c2b89e; }

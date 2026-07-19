@@ -165,6 +165,31 @@ var PjePanel = (function () {
   function tituloCurto(t) {
     return String(t).replace(/^\d{6,}\s*-\s*/, "");
   }
+  // Separa "141516171 - Petição Inicial" em {id, nome} para exibição.
+  function partesTitulo(t) {
+    const m = String(t).match(/^(\d{6,})\s*-\s*(.+)$/);
+    return m ? { id: m[1], nome: m[2] } : { id: "", nome: String(t) };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Categorias de peças (regex sobre o título sem acentos) para destaque visual.
+  // A primeira que casar vence — mantenha as mais específicas primeiro.
+  // ---------------------------------------------------------------------------
+  const CATEGORIAS = [
+    // atos do juízo
+    { cls: "cat-decisao", re: /\b(sentenca|decisao|despacho|acordao|liminar|tutela|julgamento)\b/ },
+    // atas e audiências ("ata notarial" é prova — fica para a regra de provas)
+    { cls: "cat-audiencia", re: /\b(ata(?!\s+notarial)|audiencia|assentada|depoimento)\b/ },
+    // peças das partes
+    { cls: "cat-peticao", re: /\b(peticao|inicial|contestacao|replica|treplica|recurso|apelacao|embargos|agravo|impugnacao|alegacoes|manifestacao|defesa|denuncia|queixa|memoriais|razoes|contrarrazoes)\b/ },
+    // provas técnicas
+    { cls: "cat-prova", re: /\b(laudo|pericia|parecer|ata notarial)\b/ },
+  ];
+  function categoriaDe(titulo) {
+    const t = norm(titulo);
+    for (const c of CATEGORIAS) if (c.re.test(t)) return c.cls;
+    return "cat-outro";
+  }
   // Normaliza para busca sem acentos/caixa (ex.: "peticao" acha "Petição").
   function norm(s) {
     return String(s)
@@ -205,6 +230,12 @@ var PjePanel = (function () {
             <div class="docs-hd">
               <span><strong>Peças do processo</strong><span class="count"></span></span>
               <label class="all"><input type="checkbox" class="chk-all"> todas</label>
+            </div>
+            <div class="legend" aria-hidden="true">
+              <span><i class="l-dot cat-decisao"></i>decisões</span>
+              <span><i class="l-dot cat-audiencia"></i>audiências</span>
+              <span><i class="l-dot cat-peticao"></i>petições</span>
+              <span><i class="l-dot cat-prova"></i>provas</span>
             </div>
             <div class="doclist"></div>
             <div class="docs-tip">Não achou uma peça? Role a linha do tempo do processo para carregá-la.</div>
@@ -334,7 +365,8 @@ var PjePanel = (function () {
       ctxbar.appendChild(lab);
       for (const d of sel) {
         const chip = document.createElement("span");
-        chip.className = "chip" + (prevChipIds.has(d.id) ? "" : " new");
+        chip.className =
+          "chip " + categoriaDe(d.titulo) + (prevChipIds.has(d.id) ? "" : " new");
         chip.innerHTML =
           SVG.doc +
           '<span class="chip-t" title="' + escapeHtml(d.titulo) + '">' +
@@ -409,7 +441,8 @@ var PjePanel = (function () {
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", i === mention.idx ? "true" : "false");
         row.className =
-          "mrow" + (i === mention.idx ? " active" : "") + (ids.has(d.id) ? " on" : "");
+          "mrow " + categoriaDe(d.titulo) +
+          (i === mention.idx ? " active" : "") + (ids.has(d.id) ? " on" : "");
         row.innerHTML =
           SVG.doc +
           '<span class="t" title="' + escapeHtml(d.titulo) + '">' +
@@ -635,12 +668,16 @@ var PjePanel = (function () {
         allDocs = docs.slice();
         doclist.innerHTML = "";
         for (const d of docs) {
+          const p = partesTitulo(d.titulo);
           const row = document.createElement("label");
-          row.className = "docrow";
+          row.className = "docrow " + categoriaDe(d.titulo);
           row.innerHTML =
-            `<input type="checkbox" value="${escapeHtml(d.id)}"><span title="${escapeHtml(
-              d.titulo
-            )}">${escapeHtml(d.titulo)}</span>`;
+            `<input type="checkbox" value="${escapeHtml(d.id)}">` +
+            '<span class="d-dot" aria-hidden="true"></span>' +
+            `<span class="d-t" title="${escapeHtml(d.titulo)}">` +
+            `<span class="d-nm">${escapeHtml(p.nome)}</span>` +
+            (p.id ? `<span class="d-id">${p.id}</span>` : "") +
+            "</span>";
           if (cur.has(d.id)) row.querySelector("input").checked = true;
           doclist.appendChild(row);
         }

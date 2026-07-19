@@ -15,7 +15,7 @@ linguagem natural e o **Claude** responde com base no conteúdo real dos documen
 resumos, linhas do tempo, partes, pedidos, provas — direto na página do processo.
 
 <p align="center">
-  <img src="docs/painel.png" alt="Painel do assistente com seleção de peças e resposta em tabela" width="430">
+  <img src="docs/painel-expandido.jpg" alt="Painel expandido: peças categorizadas por cor, chips de contexto e resposta em tabela" width="720">
 </p>
 
 ## ✨ Recursos
@@ -23,6 +23,7 @@ resumos, linhas do tempo, partes, pedidos, provas — direto na página do proce
 - **Chat sobre os autos** — converse com o Claude sobre as peças selecionadas, com histórico multi-turno.
 - **Seleção de peças** — checkboxes por documento; só o que você marcar é enviado.
 - **Menção com `@`** — digite `@` no campo de pergunta para buscar e marcar peças sem sair do teclado: filtro que ignora acentos (`@peticao` acha "Petição Inicial"), navegação por `↑↓`, `Enter` marca/desmarca, `Esc` fecha.
+- **Peças categorizadas por cor** — decisões, atas/audiências, petições e provas ganham destaque automático na lista (regex sobre o título), com legenda no modo expandido.
 - **Contexto sempre visível** — chips acima do campo mostram as peças marcadas (com `×` para remover), o contador indica `x/y no contexto`, e cada pergunta exibe quais peças foram anexadas naquele turno.
 - **Progresso por peça** — ao preparar a análise, um card mostra o estado de cada peça (aguardando → baixando → pronta) com barra de progresso, e a resposta chega com indicador de digitação animado.
 - **OCR nativo** — peças digitalizadas (imagem) são lidas pelo próprio Claude, sem OCR externo.
@@ -55,6 +56,10 @@ resumos, linhas do tempo, partes, pedidos, provas — direto na página do proce
    - *"Quais provas foram juntadas e o que cada uma demonstra?"*
 
 **Atalhos:** `@` cita peças no campo · `Enter` envia · `Shift+Enter` quebra linha · com o popup `@` aberto: `↑↓` navega, `Enter`/`Tab` marca, `Esc` fecha · botão `⤢` expande o painel · `↺` inicia nova conversa.
+
+<p align="center">
+  <img src="docs/mencao-arroba.jpg" alt="Popup de menção @: busca de peças com badges de contexto e ícones por categoria" width="720">
+</p>
 
 ## 🏗️ Arquitetura
 
