@@ -38,6 +38,15 @@
         <option value="claude-haiku-4-5">Claude Haiku 4.5 (mais barato)</option>
       </select>
 
+      <label class="field" for="effort">Nível de raciocínio
+        <span class="hint">Alto = mais qualidade; Baixo = mais rápido e barato.</span>
+      </label>
+      <select id="effort">
+        <option value="high" selected>Alto (recomendado)</option>
+        <option value="medium">Médio</option>
+        <option value="low">Baixo</option>
+      </select>
+
       <button class="btn" id="save">Salvar configuração</button>
       <div class="save-status" id="saveStatus"></div>
 

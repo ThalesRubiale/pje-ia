@@ -9,6 +9,10 @@
     "Responda sempre em português do Brasil.",
     "Baseie-se SOMENTE nos documentos anexados (peças selecionadas pelo usuário).",
     "Cite a peça de origem pelo nome ao afirmar fatos (ex.: 'na Contestação…').",
+    "As citações precisas de trechos (com página) são geradas automaticamente pelo",
+    "sistema — apoie cada afirmação relevante no trecho correspondente sempre que",
+    "possível. Peças digitalizadas sem camada de texto podem não permitir citação",
+    "automática; nesse caso, apenas indique a peça pelo nome e avise o usuário.",
     "Seja objetivo e técnico. Se a informação não estiver nos documentos selecionados,",
     "diga explicitamente que não consta nas peças fornecidas — não invente.",
     "Atenção a peças de mero encaminhamento: no PJe é comum a petição conter apenas",
@@ -20,16 +24,75 @@
     "listas e tabelas (ex.: linha do tempo dos atos, partes, pedidos).",
   ].join(" ");
 
-  // Limite de payload: a API aceita 32 MB por requisição; base64 infla ~33%.
-  // Mantemos folga para histórico + resposta.
+  // Limite de payload do FALLBACK base64 (quando o upload à Files API falha):
+  // a API aceita 32 MB por requisição; base64 infla ~33%. No caminho normal as
+  // peças são referenciadas por file_id e este teto não se aplica.
   const MAX_TOTAL_B64_CHARS = 24 * 1024 * 1024;
 
-  const docsCache = new Map(); // id -> {kind:"pdf",b64,size} | {kind:"text",text}
+  // Betas enviadas em todos os requests de chat (documentos por file_id).
+  const BETAS_CHAT = ["files-api-2025-04-14"];
+
+  // Fontes confiáveis para a busca de jurisprudência/legislação (allowed_domains).
+  const DOMINIOS_JURIDICOS = [
+    "stf.jus.br",
+    "stj.jus.br",
+    "tst.jus.br",
+    "tjce.jus.br",
+    "cnj.jus.br",
+    "planalto.gov.br",
+    "lexml.gov.br",
+    "jusbrasil.com.br",
+    "conjur.com.br",
+    "migalhas.com.br",
+  ];
+
+  // Ferramentas de busca web na versão suportada pelo modelo atual.
+  function toolsBusca() {
+    if (!modelCaps) return [];
+    return [
+      {
+        type: modelCaps.webSearch,
+        name: "web_search",
+        max_uses: 5,
+        allowed_domains: DOMINIOS_JURIDICOS,
+      },
+      {
+        type: modelCaps.webFetch,
+        name: "web_fetch",
+        max_uses: 3,
+        allowed_domains: DOMINIOS_JURIDICOS,
+      },
+    ];
+  }
+
+  const docsCache = new Map(); // id -> {kind:"pdf",b64,size,pages,fileId?} | {kind:"text",text}
   let conversation = []; // [{role, content}]
   let lastSentKey = null; // conjunto de peças já anexado nesta conversa
   let busy = false;
 
   const panel = PjePanel.mount();
+
+  // Request/response com o worker (upload, contagem de tokens, capacidades).
+  function rpc(msg) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(msg, (resp) => {
+        if (chrome.runtime.lastError)
+          return reject(new Error(chrome.runtime.lastError.message));
+        if (!resp) return reject(new Error("sem resposta do serviço da extensão"));
+        if (resp.error) return reject(new Error(resp.error));
+        resolve(resp);
+      });
+    });
+  }
+
+  // Capacidades do modelo atual (limite de páginas, contexto, ferramentas web).
+  let modelCaps = null;
+  function refreshCaps() {
+    chrome.runtime.sendMessage({ type: "caps" }, (r) => {
+      if (r && r.caps) modelCaps = r.caps;
+    });
+  }
+  refreshCaps();
 
   // Estado da chave: mostra CTA de configuração quando ausente e reage a mudanças
   // (ex.: quando o usuário salva a chave pelo popup, sem recarregar a página).
@@ -39,6 +102,7 @@
   refreshKey();
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area === "local" && ch.apiKey) refreshKey();
+    if (area === "local" && (ch.model || ch.apiKey)) refreshCaps();
   });
   panel.onConfigure(() => chrome.runtime.sendMessage({ type: "openOptions" }));
 
@@ -105,6 +169,82 @@
     await Promise.all([worker(), worker(), worker()]);
   }
 
+  // Sobe as peças PDF ainda sem file_id para a Files API (2 por vez). Falha de
+  // upload não interrompe: a peça cai no fallback base64 (teto de 24 MB).
+  async function subirPecas(ids) {
+    const idProc = PJE.getIdProcesso() || "proc";
+    const pend = ids.filter((id) => {
+      const d = docsCache.get(id);
+      return d && d.kind === "pdf" && !d.fileId;
+    });
+    if (!pend.length) return;
+    panel.setStatus("Enviando peças para análise…");
+    const queue = pend.slice();
+    async function w() {
+      while (queue.length) {
+        const id = queue.shift();
+        const d = docsCache.get(id);
+        try {
+          const r = await rpc({
+            type: "upload",
+            payload: {
+              filename: "peca-" + id + ".pdf",
+              b64: d.b64,
+              mime: "application/pdf",
+              cacheKey: idProc + ":" + id + ":" + (d.size || 0),
+            },
+          });
+          d.fileId = r.fileId;
+        } catch (e) {
+          console.debug("[PJe IA] upload da peça", id, "falhou; usando base64:", e && e.message);
+        }
+      }
+    }
+    await Promise.all([w(), w()]);
+  }
+
+  // Bloqueia envios acima do limite de páginas de PDF por request do modelo
+  // (600 nos modelos de 1M de contexto; 100 no Haiku). Retorna o total.
+  function guardaPaginas(ids) {
+    if (!modelCaps) return 0;
+    let total = 0;
+    for (const id of ids) {
+      const d = docsCache.get(id);
+      if (d && d.kind === "pdf") total += d.pages || 1;
+    }
+    if (total > modelCaps.maxPages) {
+      throw new Error(
+        "as peças selecionadas somam ~" + total + " páginas — acima do limite de " +
+          modelCaps.maxPages + " páginas por análise deste modelo. Desmarque algumas peças e analise por partes."
+      );
+    }
+    return total;
+  }
+
+  // Pré-voo gratuito de tokens (count_tokens): estima o tamanho do contexto e
+  // bloqueia acima de 90% da janela do modelo. Falha da estimativa não bloqueia.
+  async function estimarContexto(messages) {
+    let r = null;
+    try {
+      r = await rpc({
+        type: "countTokens",
+        payload: { system: SYSTEM_PROMPT, messages, betas: BETAS_CHAT },
+      });
+    } catch {
+      return null; // estimativa é opcional
+    }
+    if (!r || !r.tokens || !r.contextTokens) return null;
+    const pct = Math.round((r.tokens / r.contextTokens) * 100);
+    if (r.tokens > r.contextTokens * 0.9) {
+      throw new Error(
+        "as peças selecionadas ocupam ~" + pct + "% do contexto do modelo (" +
+          Math.round(r.tokens / 1000) +
+          " mil tokens) — não sobra espaço para a análise. Desmarque algumas peças ou analise por partes."
+      );
+    }
+    return { tokens: r.tokens, pct };
+  }
+
   // Remove breakpoints de cache antigos do histórico (a API aceita no máx. 4).
   function stripOldCacheControl() {
     for (const turn of conversation) {
@@ -125,16 +265,31 @@
     for (const id of ids) {
       const d = docsCache.get(id);
       if (d.kind === "pdf") {
-        totalB64 += d.b64.length;
+        if (d.fileId) {
+          // caminho normal: referência por file_id (Files API) — payload mínimo
+          blocks.push({
+            type: "document",
+            source: { type: "file", file_id: d.fileId },
+            title: metaDe(id).titulo,
+            citations: { enabled: true },
+          });
+        } else {
+          // fallback: base64 inline (upload indisponível)
+          totalB64 += d.b64.length;
+          blocks.push({
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: d.b64 },
+            title: metaDe(id).titulo,
+            citations: { enabled: true },
+          });
+        }
+      } else {
+        // peças HTML viram documento de texto puro — também citáveis
         blocks.push({
           type: "document",
-          source: { type: "base64", media_type: "application/pdf", data: d.b64 },
+          source: { type: "text", media_type: "text/plain", data: d.text.slice(0, 60000) },
           title: metaDe(id).titulo,
-        });
-      } else {
-        blocks.push({
-          type: "text",
-          text: `[${metaDe(id).titulo}]:\n` + d.text.slice(0, 60000),
+          citations: { enabled: true },
         });
       }
     }
@@ -148,19 +303,24 @@
     return blocks;
   }
 
-  // Abre um canal com o worker e resolve quando o stream termina.
-  function stream(messages, handlers) {
+  // Abre um canal com o worker e resolve quando o turno termina.
+  // Resolve com {content, stopReason}: os blocos completos da resposta
+  // (necessários no histórico para citações, ferramentas e thinking assinado).
+  function stream(messages, handlers, opts, tipo) {
     return new Promise((resolve, reject) => {
       const port = chrome.runtime.connect({ name: "claude" });
       let finished = false;
       port.onMessage.addListener((m) => {
         if (m.type === "delta") handlers.onDelta(m.text);
-        else if (m.type === "thinking") handlers.onThinking();
+        else if (m.type === "thinking") handlers.onThinking(m.text);
+        else if (m.type === "citation") handlers.onCitation && handlers.onCitation(m.citation);
+        else if (m.type === "tool") handlers.onTool && handlers.onTool(m.name);
+        else if (m.type === "file") handlers.onFile && handlers.onFile(m);
         else if (m.type === "trunc") handlers.onTrunc();
         else if (m.type === "done") {
           finished = true;
           port.disconnect();
-          resolve();
+          resolve({ content: m.content || [], stopReason: m.stopReason || null });
         } else if (m.type === "error") {
           finished = true;
           port.disconnect();
@@ -170,8 +330,55 @@
       port.onDisconnect.addListener(() => {
         if (!finished) reject(new Error("conexão com o serviço interrompida — tente de novo"));
       });
-      port.postMessage({ type: "chat", payload: { system: SYSTEM_PROMPT, messages } });
+      port.postMessage({
+        type: tipo || "chat",
+        payload: Object.assign(
+          { system: SYSTEM_PROMPT, messages, betas: BETAS_CHAT },
+          opts || {}
+        ),
+      });
     });
+  }
+
+  // Dispara o download de um arquivo no navegador (Blob + âncora; sem permissão
+  // extra de "downloads").
+  function baixarArquivo(filename, b64, mime) {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: mime || "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
+  // Rótulo humano de uma citação da API: "Peça, fl(s). X[–Y]" (fim exclusivo)
+  // para PDFs; título do site (com link) para resultados da busca web;
+  // só o título para documentos de texto (char_location).
+  function infoCitacao(c) {
+    if (c.type === "web_search_result_location") {
+      return { label: c.title || c.url || "fonte na web", url: c.url };
+    }
+    const doc = tituloLimpo(c.document_title) || "peça";
+    if (c.type === "page_location") {
+      const ini = c.start_page_number;
+      const fim = (c.end_page_number || ini + 1) - 1;
+      return { label: doc + (fim > ini ? ", fls. " + ini + "–" + fim : ", fl. " + ini) };
+    }
+    return { label: doc };
+  }
+  function tituloLimpo(t) {
+    return String(t || "").replace(/^\d{6,}\s*-\s*/, "");
+  }
+  function chaveCitacao(c) {
+    if (c.type === "web_search_result_location") return "web:" + (c.url || c.title || "");
+    return [
+      c.type,
+      c.document_index,
+      c.start_page_number != null ? c.start_page_number : c.start_char_index,
+      c.end_page_number != null ? c.end_page_number : c.end_char_index,
+    ].join(":");
   }
 
   panel.onSend(async (text, selectedIds) => {
@@ -199,11 +406,24 @@
 
     try {
       let userContent;
+      let infoCtx = "";
       if (attach) {
         await baixarSelecionadas(selectedIds);
+        const paginas = guardaPaginas(selectedIds); // falha ANTES de subir/enviar
+        await subirPecas(selectedIds);
         stripOldCacheControl();
         userContent = [...montarBlocos(selectedIds), { type: "text", text }];
-        panel.endPrep(); // confirma "peças anexadas" só depois de validar o tamanho
+        panel.setStatus("Estimando o tamanho do contexto…");
+        const est = await estimarContexto([
+          ...conversation,
+          { role: "user", content: userContent },
+        ]);
+        panel.endPrep(); // confirma "peças anexadas" só depois de validar limites
+        if (est) {
+          infoCtx =
+            " (~" + Math.round(est.tokens / 1000) + " mil tokens" +
+            (paginas ? ", " + paginas + " págs." : "") + ", " + est.pct + "% do contexto)";
+        }
       } else {
         userContent = text;
       }
@@ -211,29 +431,77 @@
       conversation.push({ role: "user", content: userContent });
       lastSentKey = key;
 
-      panel.setStatus("Analisando…");
+      panel.setStatus("Analisando…" + infoCtx);
       assistantEl = panel.addMessage("assistant", "");
-      await stream(conversation, {
+      // Citações deste turno: marcadores [n] entram no texto via placeholders
+      // (área de uso privado do Unicode — sobrevivem intactos ao escape do
+      // renderizador) e a lista numerada vai no rodapé da mensagem.
+      const cites = [];
+      const citeKeys = new Map();
+      // Busca de jurisprudência: ferramentas web entram só com o toggle ligado.
+      // Nunca combinamos ferramentas web com code_execution no mesmo request
+      // (as versões _20260209 já embutem execução para filtragem dinâmica).
+      const opts = {};
+      if (panel.isSearchOn() && modelCaps) {
+        opts.tools = toolsBusca();
+        opts.betas = BETAS_CHAT.concat(
+          modelCaps.webFetch === "web_fetch_20250910" ? ["web-fetch-2025-09-10"] : []
+        );
+      }
+      let thinkAcc = "";
+      const fim = await stream(conversation, {
         onDelta(delta) {
           if (!acc) panel.setStatus("");
           acc += delta;
-          panel.updateAssistant(assistantEl, acc);
+          panel.updateAssistant(assistantEl, acc, cites);
         },
-        onThinking() {
+        onThinking(t) {
+          if (t) {
+            thinkAcc += t;
+            panel.setThinking(assistantEl, thinkAcc);
+          }
           if (!acc) panel.setStatus("Raciocinando sobre as peças…");
+        },
+        onCitation(c) {
+          const k = chaveCitacao(c);
+          let n = citeKeys.get(k);
+          if (!n) {
+            n = cites.length + 1;
+            citeKeys.set(k, n);
+            cites.push(infoCitacao(c));
+          }
+          acc += "\uE000" + n + "\uE001";
+          panel.updateAssistant(assistantEl, acc, cites);
+        },
+        onTool(name) {
+          if (acc) return; // ferramenta no meio do texto: não sobrepõe a resposta
+          if (name === "web_search") panel.setStatus("Pesquisando jurisprudência na web…");
+          else if (name === "web_fetch") panel.setStatus("Lendo página de fonte jurídica…");
+          else panel.setStatus("Executando ferramenta…");
         },
         onTrunc() {
           truncated = true;
         },
-      });
+      }, opts);
 
       if (acc.trim()) {
-        conversation.push({ role: "assistant", content: acc });
-        panel.setStatus(
-          truncated
-            ? "A resposta atingiu o tamanho máximo — peça para continuar, se necessário."
-            : ""
-        );
+        // Preserva os blocos completos da resposta (não só o texto): a API
+        // exige thinking assinado intacto e blocos de ferramenta/citações no
+        // histórico dos turnos seguintes.
+        conversation.push({
+          role: "assistant",
+          content:
+            fim.content && fim.content.length
+              ? fim.content
+              : [{ type: "text", text: acc.replace(/\uE000\d+\uE001/g, "") }],
+        });
+        let st = "";
+        if (truncated)
+          st = "A resposta atingiu o tamanho máximo — peça para continuar, se necessário.";
+        if (fim.stopReason === "model_context_window_exceeded")
+          st =
+            "A conversa atingiu o limite de contexto do modelo — inicie uma nova conversa ou selecione menos peças.";
+        panel.setStatus(st);
       } else {
         // resposta vazia: não grava turno (evitaria content vazio no próximo request)
         panel.removeMessage(assistantEl);
@@ -251,6 +519,119 @@
         conversation.pop();
         lastSentKey = null;
       }
+    } finally {
+      busy = false;
+      panel.lockInput(false);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Geração de documento Word (.docx) via skill oficial "docx" da Anthropic:
+  // request próprio (code_execution + container com a skill), SEPARADO do chat
+  // e sem ferramentas web — dois ambientes de execução confundem o modelo.
+  // O arquivo gerado volta pela Files API e é baixado no navegador.
+  // ---------------------------------------------------------------------------
+  const INSTRUCAO_DOCX_PADRAO =
+    "Elabore um relatório completo do processo: identificação e partes, síntese dos fatos, " +
+    "linha do tempo dos atos processuais, pedidos, teses de cada parte, provas produzidas e " +
+    "situação atual do feito.";
+
+  panel.onGerarDoc(async (text, selectedIds) => {
+    if (busy) return;
+    if (selectedIds.length === 0) {
+      panel.setStatus("Marque as peças que devem embasar o documento.");
+      return;
+    }
+    busy = true;
+    panel.lockInput(true);
+
+    const instrucao = (text && text.trim()) || INSTRUCAO_DOCX_PADRAO;
+    panel.addMessage(
+      "user",
+      "📄 Gerar documento (.docx): " + instrucao,
+      selectedIds.map((id) => metaDe(id).titulo)
+    );
+    let assistantEl = null;
+    let acc = "";
+    let arquivo = null;
+
+    try {
+      await baixarSelecionadas(selectedIds);
+      guardaPaginas(selectedIds);
+      await subirPecas(selectedIds);
+      const blocos = montarBlocos(selectedIds);
+      panel.endPrep();
+
+      panel.setStatus("Gerando documento… (pode levar 1–2 minutos)");
+      assistantEl = panel.addMessage("assistant", "");
+
+      const messages = [
+        {
+          role: "user",
+          content: [
+            ...blocos,
+            {
+              type: "text",
+              text:
+                instrucao +
+                " Gere o resultado como um arquivo Word (.docx) bem formatado " +
+                "(títulos, listas e tabelas), usando a skill docx.",
+            },
+          ],
+        },
+      ];
+
+      await stream(
+        messages,
+        {
+          onDelta(delta) {
+            acc += delta;
+            panel.updateAssistant(assistantEl, acc);
+          },
+          onThinking() {
+            if (!acc) panel.setStatus("Planejando o documento…");
+          },
+          onTool() {
+            if (!acc) panel.setStatus("Gerando o arquivo .docx…");
+          },
+          onFile(f) {
+            arquivo = f;
+          },
+          onTrunc() {},
+        },
+        {
+          tools: [{ type: "code_execution_20260521", name: "code_execution" }],
+          container: {
+            skills: [{ type: "anthropic", skill_id: "docx", version: "latest" }],
+          },
+          // o parâmetro container (skills) exige a beta de code execution
+          // JUNTO com a de skills — sem ela a API devolve 400
+          betas: ["code-execution-2025-08-25", "skills-2025-10-02", "files-api-2025-04-14"],
+          maxTokens: 16000,
+        },
+        "gerarDoc"
+      );
+
+      if (arquivo) {
+        const idProc = PJE.getIdProcesso();
+        const nome = ("processo-" + (idProc ? idProc + "-" : "") + arquivo.filename)
+          .replace(/[^\w.\-]+/g, "-")
+          .replace(/-+/g, "-");
+        baixarArquivo(nome, arquivo.b64, arquivo.mime);
+        panel.updateAssistant(
+          assistantEl,
+          (acc ? acc + "\n\n" : "") + "✅ **Documento gerado e baixado:** " + nome
+        );
+        panel.setStatus("");
+      } else {
+        panel.setStatus(
+          "O modelo não gerou o arquivo .docx — tente reformular o pedido e gerar de novo."
+        );
+      }
+    } catch (e) {
+      panel.endPrep(true);
+      panel.setStatus("Erro: " + (e && e.message ? e.message : e));
+      if (assistantEl && !acc) panel.removeMessage(assistantEl);
     } finally {
       busy = false;
       panel.lockInput(false);

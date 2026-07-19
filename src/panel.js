@@ -32,7 +32,7 @@ var PjePanel = (function () {
     return l.split("|").map((c) => c.trim());
   }
 
-  function renderMd(text) {
+  function renderMd(text, cites) {
     const src = escapeHtml(text);
     const lines = src.split(/\r?\n/);
     const out = [];
@@ -142,8 +142,41 @@ var PjePanel = (function () {
       out.push("<p>" + buf.map(inlineMd).join("<br>") + "</p>");
     }
 
-    return out.join("");
+    let html = out.join("");
+    // Marcadores de citação: o content script injeta placeholders na área de
+    // uso privado do Unicode (U+E000 n U+E001) — eles atravessam o escapeHtml
+    // intactos e só aqui, DEPOIS do escape, viram sobrescritos [n].
+    html = html.replace(new RegExp("\\uE000(\\d+)\\uE001", "g"), (m, n) => {
+      const c = cites && cites[Number(n) - 1];
+      return (
+        '<sup class="cit"' +
+        (c ? ' title="' + escapeHtml(c.label) + '"' : "") +
+        ">" + n + "</sup>"
+      );
+    });
+    return html;
   }
+
+  // Ações rápidas: preenchem o campo de texto com um prompt pronto (o usuário
+  // revisa e envia). Só UI — nenhum request é disparado automaticamente.
+  const ACOES_RAPIDAS = [
+    {
+      rot: "Resumo do processo",
+      p: "Faça um resumo objetivo do processo: partes, objeto, pedidos, andamento e situação atual.",
+    },
+    {
+      rot: "Linha do tempo",
+      p: "Monte uma linha do tempo dos atos processuais em tabela: data, ato e peça de origem.",
+    },
+    {
+      rot: "Preparar audiência",
+      p: "Prepare um roteiro para a audiência: pontos controvertidos, provas de cada parte, sugestões de perguntas e riscos.",
+    },
+    {
+      rot: "Minuta de despacho",
+      p: "Redija uma minuta de despacho/decisão adequada à fase atual do processo, fundamentando nas peças.",
+    },
+  ];
 
   // Ícones SVG (evita depender de glifos unicode que podem faltar na fonte)
   const SVG = {
@@ -153,6 +186,10 @@ var PjePanel = (function () {
       '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>',
     reset:
       '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 1 1 1.6 3.9M2.5 12V8.8h3.2"/></svg>',
+    download:
+      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.8 7l3.2 3.2L11.2 7M3 13h10"/></svg>',
+    copy:
+      '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg>',
     doc:
       '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 1.5h-5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V5z"/><path d="M9.5 1.5V5h3"/></svg>',
     x:
@@ -221,6 +258,7 @@ var PjePanel = (function () {
         <div class="hd">
           <img class="mark" src="${iconUrl}" alt="">
           <span class="ttl">Assistente dos Autos</span>
+          <button class="dl" title="Baixar conversa (.md)">${SVG.download}</button>
           <button class="reset" title="Nova conversa">${SVG.reset}</button>
           <button class="expand" title="Expandir / recolher">${SVG.expand}</button>
           <button class="close" title="Fechar">${SVG.close}</button>
@@ -252,6 +290,11 @@ var PjePanel = (function () {
               </div>
               <div class="status" aria-live="polite"></div>
               <div class="ctxbar" hidden></div>
+              <div class="quick"></div>
+              <div class="toolbar">
+                <button class="tgl-search" aria-pressed="false" title="Permitir busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…)">🔍 Jurisprudência</button>
+                <button class="btn-docx" title="Gera um documento Word (.docx) a partir das peças selecionadas — usa o texto digitado como instrução ou um relatório padrão">📄 Gerar .docx</button>
+              </div>
               <div class="inrow">
                 <textarea class="in" rows="1" placeholder="Pergunte sobre as peças… (@ cita uma peça)"></textarea>
                 <button class="send">Enviar</button>
@@ -314,6 +357,101 @@ var PjePanel = (function () {
     resetBtn.addEventListener("click", () => {
       if (resetCb) resetCb();
     });
+
+    // Toggle de busca de jurisprudência (estado lido pelo content script no envio)
+    const tglSearch = $(".tgl-search");
+    let searchOn = false;
+    tglSearch.addEventListener("click", () => {
+      searchOn = !searchOn;
+      tglSearch.setAttribute("aria-pressed", String(searchOn));
+      tglSearch.classList.toggle("on", searchOn);
+    });
+
+    // Geração de .docx: entrega o texto digitado (instrução) + peças marcadas
+    const btnDocx = $(".btn-docx");
+    let gerarDocCb = null;
+    btnDocx.addEventListener("click", () => {
+      if (!gerarDocCb) return;
+      const t = inEl.value;
+      gerarDocCb(t, getSelected());
+      if (t.trim()) {
+        inEl.value = "";
+        inEl.style.height = "auto";
+      }
+      closeMention();
+    });
+
+    // Ações rápidas: preenchem o campo com um prompt pronto para revisão
+    const quickEl = $(".quick");
+    for (const a of ACOES_RAPIDAS) {
+      const b = document.createElement("button");
+      b.className = "quick-btn";
+      b.textContent = a.rot;
+      b.title = a.p;
+      b.addEventListener("click", () => {
+        inEl.value = a.p;
+        autoresize();
+        inEl.focus();
+      });
+      quickEl.appendChild(b);
+    }
+
+    // -------------------------------------------------------------------------
+    // Transcript da conversa (para exportar .md e copiar por mensagem).
+    // Os placeholders de citação viram [n] no texto exportado.
+    // -------------------------------------------------------------------------
+    const transcript = []; // [{role, text, cites?}]
+    const RE_CIT_PLACEHOLDER = new RegExp("\\uE000(\\d+)\\uE001", "g");
+    function textoExportavel(t) {
+      return String(t || "").replace(RE_CIT_PLACEHOLDER, "[$1]");
+    }
+
+    const dlBtn = $(".dl");
+    dlBtn.addEventListener("click", () => {
+      if (!transcript.length) return;
+      const linhas = ["# Conversa — PJe IA", ""];
+      for (const t of transcript) {
+        linhas.push(t.role === "user" ? "## Usuário" : "## Assistente");
+        linhas.push("");
+        linhas.push(t.text || "");
+        if (t.cites && t.cites.length) {
+          linhas.push("");
+          linhas.push("Fontes:");
+          t.cites.forEach((c, i) =>
+            linhas.push(i + 1 + ". " + c.label + (c.url ? " — " + c.url : ""))
+          );
+        }
+        linhas.push("");
+      }
+      const blob = new Blob([linhas.join("\n")], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "conversa-pje-ia.md";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    });
+
+    // Estrutura interna da bolha do assistant: raciocínio colapsável + corpo +
+    // botão de copiar. Criada sob demanda (a bolha nasce com o indicador de
+    // digitação e só ganha estrutura no primeiro delta/thinking).
+    function estruturaAssistant(el) {
+      if (el.__body) return el;
+      el.classList.remove("typing");
+      el.innerHTML =
+        '<details class="think" hidden><summary>Raciocínio</summary><div class="think-t"></div></details>' +
+        '<div class="body"></div>' +
+        '<button class="copy" title="Copiar texto da resposta">' + SVG.copy + "</button>";
+      el.__think = el.querySelector(".think");
+      el.__thinkT = el.querySelector(".think-t");
+      el.__body = el.querySelector(".body");
+      el.querySelector(".copy").addEventListener("click", () => {
+        const entry = el.__entry;
+        const txt = textoExportavel(entry && entry.text);
+        if (txt && navigator.clipboard) navigator.clipboard.writeText(txt).catch(() => {});
+      });
+      return el;
+    }
 
     // auto-resize do textarea
     function autoresize() {
@@ -660,6 +798,7 @@ var PjePanel = (function () {
         hintEl = null;
         needkeyEl = null;
         prepEl = null;
+        transcript.length = 0;
         statusEl.textContent = "";
         showEmptyHint();
       },
@@ -692,9 +831,11 @@ var PjePanel = (function () {
         clearEmptyHint();
         const el = document.createElement("div");
         el.className = "msg " + role;
+        el.__entry = { role, text: text || "" };
+        transcript.push(el.__entry);
         if (role === "assistant") {
           if (text) {
-            el.innerHTML = renderMd(text);
+            estruturaAssistant(el).__body.innerHTML = renderMd(text);
           } else {
             // aguardando o modelo: indicador de digitação
             el.classList.add("typing");
@@ -723,18 +864,67 @@ var PjePanel = (function () {
         msgs.scrollTop = msgs.scrollHeight;
         return el;
       },
-      updateAssistant(el, fullText) {
-        el.classList.remove("typing");
-        el.innerHTML = renderMd(fullText);
+      // cites: [{label, url?}] — citações do turno; viram sobrescritos [n] no
+      // texto e uma lista numerada de fontes no rodapé da bolha.
+      updateAssistant(el, fullText, cites) {
+        estruturaAssistant(el);
+        // recolhe o raciocínio quando a resposta começa a chegar
+        if (el.__think && !el.__think.hidden && fullText) el.__think.open = false;
+        let html = renderMd(fullText, cites);
+        if (cites && cites.length) {
+          html +=
+            '<div class="cites">' +
+            cites
+              .map((c, i) => {
+                const rot = escapeHtml(c.label);
+                // fontes da web (busca de jurisprudência) viram links
+                const corpo =
+                  c.url && /^https?:\/\//.test(c.url)
+                    ? '<a href="' + escapeHtml(c.url) + '" target="_blank" rel="noopener">' +
+                      rot + "</a>"
+                    : rot;
+                return (
+                  '<span class="cite-row"><sup class="cit">' + (i + 1) + "</sup> " +
+                  corpo + "</span>"
+                );
+              })
+              .join("") +
+            "</div>";
+        }
+        el.__body.innerHTML = html;
+        if (el.__entry) {
+          el.__entry.text = fullText;
+          el.__entry.cites = cites || null;
+        }
+        msgs.scrollTop = msgs.scrollHeight;
+      },
+      // Resumo do raciocínio (thinking) em bloco colapsável no topo da bolha.
+      setThinking(el, text) {
+        estruturaAssistant(el);
+        el.__think.hidden = !text;
+        if (text) {
+          if (!el.__body.innerHTML) el.__think.open = true;
+          el.__thinkT.textContent = text;
+        }
         msgs.scrollTop = msgs.scrollHeight;
       },
       removeMessage(el) {
-        if (el) el.remove();
+        if (el) {
+          const i = transcript.indexOf(el.__entry);
+          if (i >= 0) transcript.splice(i, 1);
+          el.remove();
+        }
         showEmptyHint();
       },
       startPrep,
       setPrepState,
       endPrep,
+      isSearchOn() {
+        return searchOn;
+      },
+      onGerarDoc(cb) {
+        gerarDocCb = cb;
+      },
       setStatus(s) {
         statusEl.textContent = s || "";
       },

@@ -16,10 +16,55 @@ Content scripts injetados em `https://pje.tjce.jus.br/pje1grau/*`, nesta ordem
 | `src/content.js` | — | Orquestração: downloads com concorrência 3, cache por peça, montagem dos blocos da API, conversa multi-turno, streaming via `Port`. |
 
 O worker (`src/background.js` + `src/claude.js`, ES modules) guarda a chave da API e faz o
-streaming SSE — **a chave nunca chega ao contexto da página**. Comunicação content↔worker
-por `chrome.runtime.connect({name: "claude"})`.
+streaming SSE — **a chave nunca chega ao contexto da página**. Dois canais content↔worker:
+
+- **Port** `chrome.runtime.connect({name:"claude"})` para os turnos (streaming). Tipos
+  content→worker: `chat` e `gerarDoc`; worker→content: `delta`, `thinking`, `citation`,
+  `tool`, `file`, `trunc`, `done {content, stopReason}`, `error`.
+- **`chrome.runtime.sendMessage`** (request/response) para `caps` (capacidades do modelo),
+  `upload` (Files API) e `countTokens` (pré-voo gratuito).
+
+## Fluxo de um turno (protocolo v2)
+
+`claude.js` acumula os **blocos completos** da resposta a partir do SSE (padrão dos SDKs:
+`content_block_start/delta/stop`, incluindo `signature_delta` do thinking, `citations_delta`
+e `input_json_delta`) e emite `{kind:"final", content, stopReason, containerId}`.
+`background.js` resolve sozinho as continuações de **`pause_turn`** (reenvia
+`messages + [{role:"assistant", content: parcial}]`, reutilizando `container.id` quando há
+skills; máx. 8 iterações) — o content script enxerga um único turno lógico.
+
+`MODEL_CAPS` em `background.js` governa por modelo: `contextTokens`, `maxPages` (600 nos
+modelos de 1M; 100 no Haiku), versões de `web_search`/`web_fetch` (variantes `_20260209`
+no Sonnet 5/Opus 4.8; básicas no Fable/Haiku), `thinking` (adaptive+summarized; omitido no
+Haiku) e `effort` (não suportado no Haiku).
 
 ## Invariantes importantes
+
+- **Assistant no histórico é SEMPRE array de blocos** (`response.content` completo), nunca
+  string: a API exige thinking assinado intacto e os blocos de ferramenta/citações nos
+  turnos seguintes. Em fallback (sem blocos), texto puro com os placeholders de citação
+  removidos.
+- **Dois tipos de request, nunca misturados**: *chat/busca* (documentos + citações +
+  web tools quando o toggle "Jurisprudência" está ligado) e *gerar documento* (skill
+  `docx` + `code_execution_20260521` + betas `code-execution-2025-08-25`/
+  `skills-2025-10-02`/`files-api-2025-04-14` — o `container` com skills exige a beta de
+  code execution junto com a de skills).
+  As versões `_20260209` dos web tools já embutem execução de código — **nunca** declare
+  `code_execution` junto delas.
+- **Peças vão por `file_id` (Files API)**: upload único pelo worker com cache em
+  `chrome.storage.session` (chave `idProcesso:idPeca:tamanho`); beta
+  `files-api-2025-04-14` em todos os requests de chat. Base64 inline é só fallback de
+  upload (aí vale o teto `MAX_TOTAL_B64_CHARS` de 24 MB).
+- **Guardas de processo grande**: contagem de páginas por heurística no binário do PDF
+  (`pje.js`) bloqueia acima de `MODEL_CAPS.maxPages` ANTES do envio; `count_tokens`
+  (gratuito) estima o contexto e bloqueia acima de 90% da janela. Tratar também
+  `stop_reason: model_context_window_exceeded`.
+- **Citações**: `citations:{enabled:true}` em TODOS os blocos document (regra da API:
+  tudo-ou-nada); peças HTML viram document com source text (citáveis por
+  `char_location`). No stream, `citations_delta` gera marcadores por **placeholder PUA**
+  (`\uE000<n>\uE001` — sempre como escapes ASCII no código, nunca o caractere cru) que
+  atravessam o escape-first do `renderMd` e viram `<sup>` só DEPOIS do escape. PDFs
+  escaneados sem camada de texto não são citáveis (degradação graciosa).
 
 - **Fonte de verdade da seleção de peças**: os checkboxes de `.doclist` em `panel.js`.
   Chips da barra de contexto, contador `(x/y no contexto)`, popup `@` e mensagens são
@@ -62,9 +107,21 @@ texto e o checkbox correspondente é alternado. Detalhes fáceis de quebrar:
   `setDocs()` — todos os caminhos que movem o caret ou mudam a lista.
 - Cap de `MENTION_MAX` itens com linha "… e mais N peças" quando excede.
 
+## Geração de .docx (skill oficial)
+
+Botão "📄 Gerar .docx" no painel: request `gerarDoc` com as peças selecionadas + instrução
+(texto digitado ou relatório padrão). O worker extrai o `file_id` dos blocos
+`bash_code_execution_tool_result` (fica com o **último** `.docx` gerado), baixa via Files
+API e repassa os bytes pelo Port; o content script dispara o download com Blob + âncora
+(sem permissão `downloads`). Custo: code execution tem franquia de 1.550 h/mês por
+organização (US$ 0,05/h depois), além dos tokens.
+
 ## Desenvolvimento e teste
 
-- Não há bundler nem testes automatizados. Valide sintaxe com `node --check src/*.js`.
+- Não há bundler. Valide sintaxe com `node --check src/*.js`. Testes de unidade fora do
+  navegador no scratchpad da sessão: `renderMd` (escape-first + citações) roda com
+  `eval` do `panel.js`; o acumulador SSE de `claude.js` roda com `fetch` fake devolvendo
+  um `ReadableStream` de eventos simulados (chat com citação, `pause_turn`, docx).
 - **Testar a UI sem PJe**: criar um HTML que stub `window.chrome`
   (`runtime.getURL`, `storage.local.get`, `runtime.connect`) e carregue `src/panel.js`,
   servido por HTTP local (fetch do CSS falha em `file://`). Chamar `PjePanel.mount()`,
@@ -88,5 +145,11 @@ expandido.
 - Comentários e strings de UI em português do Brasil (com acentuação correta).
 - Identidade visual: azul-marinho `#14243d`, dourado `#c49e60`, papel `#fbf9f4`,
   títulos em Georgia serif. Variáveis CSS no topo de `panel.css` (`.wrap`).
-- Modelos da API: manter os IDs do `popup.html` alinhados aos aliases atuais da Anthropic
-  (`claude-sonnet-5` é o default em `background.js`).
+- Modelos da API: manter os IDs do `popup.html`/`options.html` alinhados aos aliases
+  atuais da Anthropic (`claude-sonnet-5` é o default em `background.js`) e a tabela
+  `MODEL_CAPS` sincronizada com os docs (limites, versões de tools, thinking/effort).
+- Config no `chrome.storage.local`: `apiKey`, `model`, `effort` (baixo/médio/alto —
+  `output_config.effort`; omitido nos modelos sem suporte).
+- Alternar o toggle de busca ou trocar de modelo invalida o cache de prompt daquele ponto
+  em diante (comportamento aceito). Arquivos enviados à Files API persistem na conta
+  (100 GB por organização) — "limpar uploads" é melhoria futura registrada.

@@ -83,16 +83,39 @@ var PJE = (function () {
     return corpo;
   }
 
+  // Conta as páginas de um PDF por heurística no binário: ocorrências de
+  // "/Type /Page" (objetos de página) com fallback no maior "/Count N" da
+  // árvore de páginas. Subconta em PDFs com object streams comprimidos — a
+  // estimativa de tokens (count_tokens) é a guarda definitiva nesses casos.
+  async function contarPaginas(blob) {
+    try {
+      const s = new TextDecoder("latin1").decode(await blob.arrayBuffer());
+      const m = s.match(/\/Type\s*\/Page[^s]/g);
+      if (m && m.length) return m.length;
+      let max = 0;
+      const re = /\/Count\s+(\d+)/g;
+      let mm;
+      while ((mm = re.exec(s))) max = Math.max(max, parseInt(mm[1], 10));
+      return max || 1;
+    } catch {
+      return 1;
+    }
+  }
+
   // Interpreta o corpo da resposta. Devolve null quando veio vazio
   // (PDF de 0 bytes ou texto em branco após a extração).
   async function lerCorpo(r, id) {
     const ct = (r.headers.get("content-type") || "").toLowerCase();
     if (ct.includes("pdf")) {
       const blob = await r.blob();
-      console.debug("[PJe IA] peça", id, "PDF de", blob.size, "bytes");
-      if (!blob.size) return null;
+      if (!blob.size) {
+        console.debug("[PJe IA] peça", id, "PDF de 0 bytes");
+        return null;
+      }
+      const pages = await contarPaginas(blob);
+      console.debug("[PJe IA] peça", id, "PDF de", blob.size, "bytes,", pages, "página(s)");
       const b64 = await blobToB64(blob);
-      return { kind: "pdf", b64, size: blob.size };
+      return { kind: "pdf", b64, size: blob.size, pages };
     }
     const raw = await r.text();
     // Peças HTML: extrai só o texto legível (sem tags/scripts) para o modelo.

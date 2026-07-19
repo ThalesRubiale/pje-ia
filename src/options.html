@@ -40,7 +40,16 @@
           <option value="claude-sonnet-5">Claude Sonnet 5 (recomendado)</option>
           <option value="claude-opus-4-8">Claude Opus 4.8</option>
           <option value="claude-fable-5">Claude Fable 5 (mais capaz)</option>
-          <option value="claude-haiku-4-5">Claude Haiku 4.5 (mais barato)</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 (mais barato — processos pequenos)</option>
+        </select>
+
+        <label class="field" for="effort">Nível de raciocínio
+          <span class="hint">Alto = mais qualidade; Baixo = mais rápido e barato.</span>
+        </label>
+        <select id="effort">
+          <option value="high" selected>Alto (recomendado)</option>
+          <option value="medium">Médio</option>
+          <option value="low">Baixo</option>
         </select>
 
         <button class="btn" id="save">Salvar configuração</button>
