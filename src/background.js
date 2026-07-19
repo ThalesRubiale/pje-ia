@@ -243,24 +243,43 @@ async function gerarDocumento(port, payload) {
   return r;
 }
 
+// Impede o Chrome de matar o service worker durante um turno longo: o MV3
+// encerra o worker após ~30 s sem eventos de extensão, e a geração de .docx
+// tem longos silêncios (code execution roda no servidor sem emitir SSE).
+// Chamar uma API de extensão de tempos em tempos reseta o timer de ociosidade.
+function manterVivo() {
+  const t = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
+  return () => clearInterval(t);
+}
+
+// postMessage tolerante: a aba pode ter fechado a porta no meio do stream.
+function postar(port, m) {
+  try {
+    port.postMessage(m);
+  } catch {
+    /* porta já desconectada */
+  }
+}
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "claude") return;
 
   port.onMessage.addListener((msg) => {
-    if (!msg) return;
-    const fluxo =
-      msg.type === "chat"
-        ? executarTurno(port, msg.payload)
-        : msg.type === "gerarDoc"
-          ? gerarDocumento(port, msg.payload)
-          : null;
-    if (!fluxo) return;
-    fluxo
+    // "ping" (e qualquer tipo desconhecido) só serve de keepalive: o próprio
+    // recebimento da mensagem reseta o timer de ociosidade do worker.
+    if (!msg || (msg.type !== "chat" && msg.type !== "gerarDoc")) return;
+
+    const parar = manterVivo();
+    (msg.type === "chat"
+      ? executarTurno(port, msg.payload)
+      : gerarDocumento(port, msg.payload)
+    )
       .then((r) =>
-        port.postMessage({ type: "done", content: r.content, stopReason: r.stopReason })
+        postar(port, { type: "done", content: r.content, stopReason: r.stopReason })
       )
       .catch((e) =>
-        port.postMessage({ type: "error", error: String((e && e.message) || e) })
-      );
+        postar(port, { type: "error", error: String((e && e.message) || e) })
+      )
+      .finally(parar);
   });
 });

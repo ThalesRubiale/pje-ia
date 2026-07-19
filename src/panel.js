@@ -292,14 +292,14 @@ var PjePanel = (function () {
               <div class="ctxbar" hidden></div>
               <div class="quick"></div>
               <div class="toolbar">
-                <button class="tgl-search" aria-pressed="false" title="Permitir busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…)">🔍 Jurisprudência</button>
-                <button class="btn-docx" title="Gera um documento Word (.docx) a partir das peças selecionadas — usa o texto digitado como instrução ou um relatório padrão">📄 Gerar .docx</button>
+                <button class="tgl-search" aria-pressed="false" title="Liga/desliga a busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…). Com a busca ligada, escreva a pergunta e use o botão Enviar normalmente.">🔍 Jurisprudência</button>
+                <button class="btn-docx" title="Gera um documento Word (.docx) com base nas peças marcadas. Digite uma instrução no campo abaixo e clique aqui — ou clique direto para um relatório padrão do processo. (Não use o botão Enviar para isso.)">📄 Gerar .docx</button>
               </div>
               <div class="inrow">
                 <textarea class="in" rows="1" placeholder="Pergunte sobre as peças… (@ cita uma peça)"></textarea>
                 <button class="send">Enviar</button>
               </div>
-              <div class="hint-key">Digite <b>@</b> para citar peças • Enter envia • Shift+Enter quebra linha.</div>
+              <div class="hint-key"><b>@</b> cita peças • <b>Enter</b> envia a pergunta (Shift+Enter quebra linha) • <b>📄 Gerar .docx</b>: digite a instrução e clique no botão — vazio gera o relatório padrão.</div>
             </div>
           </div>
         </div>
@@ -365,6 +365,11 @@ var PjePanel = (function () {
       searchOn = !searchOn;
       tglSearch.setAttribute("aria-pressed", String(searchOn));
       tglSearch.classList.toggle("on", searchOn);
+      // feedback imediato: o rótulo e o status dizem o que o toggle faz
+      tglSearch.textContent = searchOn ? "🔍 Jurisprudência ligada" : "🔍 Jurisprudência";
+      statusEl.textContent = searchOn
+        ? "Busca de jurisprudência ligada: as próximas perguntas enviadas poderão consultar STF, STJ, Planalto e outras fontes oficiais."
+        : "Busca de jurisprudência desligada.";
     });
 
     // Geração de .docx: entrega o texto digitado (instrução) + peças marcadas

@@ -88,6 +88,12 @@ Haiku) e `effort` (não suportado no Haiku).
   blocos.
 - **Turnos desfeitos em erro**: em falha ou resposta vazia, `content.js` faz `pop()` do
   turno do usuário e zera `lastSentKey` para permitir nova tentativa limpa.
+- **Keepalive do service worker (MV3)**: o Chrome mata o worker após ~30 s sem eventos
+  de extensão — fatal na geração de .docx, cujo code execution roda no servidor com
+  longos silêncios no SSE (sintoma: "conexão com o serviço interrompida"). Durante um
+  turno, `background.js` chama `chrome.runtime.getPlatformInfo` a cada 20 s
+  (`manterVivo`) e `content.js` manda `{type:"ping"}` pela porta; o handler do Port
+  ignora tipos desconhecidos. Não remova nenhum dos dois lados.
 - **Markdown seguro**: `renderMd()` em `panel.js` **escapa primeiro, formata depois**.
   Qualquer mudança ali precisa preservar essa ordem (a resposta do modelo pode conter
   conteúdo dos autos).

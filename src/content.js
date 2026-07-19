@@ -310,6 +310,16 @@
     return new Promise((resolve, reject) => {
       const port = chrome.runtime.connect({ name: "claude" });
       let finished = false;
+      // Ping periódico: receber mensagem pela porta reseta o timer de
+      // ociosidade do service worker (MV3 mata o worker após ~30 s sem
+      // eventos — fatal na geração de .docx, que tem longos silêncios).
+      const ping = setInterval(() => {
+        try {
+          port.postMessage({ type: "ping" });
+        } catch {
+          clearInterval(ping);
+        }
+      }, 20000);
       port.onMessage.addListener((m) => {
         if (m.type === "delta") handlers.onDelta(m.text);
         else if (m.type === "thinking") handlers.onThinking(m.text);
@@ -319,15 +329,18 @@
         else if (m.type === "trunc") handlers.onTrunc();
         else if (m.type === "done") {
           finished = true;
+          clearInterval(ping);
           port.disconnect();
           resolve({ content: m.content || [], stopReason: m.stopReason || null });
         } else if (m.type === "error") {
           finished = true;
+          clearInterval(ping);
           port.disconnect();
           reject(new Error(m.error));
         }
       });
       port.onDisconnect.addListener(() => {
+        clearInterval(ping);
         if (!finished) reject(new Error("conexão com o serviço interrompida — tente de novo"));
       });
       port.postMessage({
@@ -545,7 +558,8 @@
     busy = true;
     panel.lockInput(true);
 
-    const instrucao = (text && text.trim()) || INSTRUCAO_DOCX_PADRAO;
+    const usouPadrao = !(text && text.trim());
+    const instrucao = usouPadrao ? INSTRUCAO_DOCX_PADRAO : text.trim();
     panel.addMessage(
       "user",
       "📄 Gerar documento (.docx): " + instrucao,
@@ -562,7 +576,11 @@
       const blocos = montarBlocos(selectedIds);
       panel.endPrep();
 
-      panel.setStatus("Gerando documento… (pode levar 1–2 minutos)");
+      panel.setStatus(
+        usouPadrao
+          ? "Nenhuma instrução digitada — gerando o relatório padrão do processo… (pode levar 1–2 minutos)"
+          : "Gerando o documento conforme a instrução digitada… (pode levar 1–2 minutos)"
+      );
       assistantEl = panel.addMessage("assistant", "");
 
       const messages = [
