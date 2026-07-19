@@ -67,7 +67,11 @@
 
   const docsCache = new Map(); // id -> {kind:"pdf",b64,size,pages,fileId?} | {kind:"text",text}
   let conversation = []; // [{role, content}]
-  let lastSentKey = null; // conjunto de peças já anexado nesta conversa
+  // Peças cujos blocos document JÁ estão no histórico desta conversa. Anexamos
+  // só o DELTA a cada turno: reanexar tudo duplicaria as páginas/tokens no
+  // request (o histórico não pode ser editado) e estourava os limites já no
+  // segundo envio. Peça desmarcada permanece no histórico até "Nova conversa".
+  let pecasNaConversa = new Set();
   let busy = false;
 
   const panel = PjePanel.mount();
@@ -109,7 +113,8 @@
   panel.onReset(() => {
     if (busy) return; // não zera no meio de uma resposta
     conversation = [];
-    lastSentKey = null;
+    pecasNaConversa.clear();
+    panel.setContexto(null);
     panel.clearMessages();
     refreshKey(); // re-renderiza CTA de chave se necessário
   });
@@ -213,9 +218,14 @@
       if (d && d.kind === "pdf") total += d.pages || 1;
     }
     if (total > modelCaps.maxPages) {
+      const dica =
+        modelCaps.maxPages <= 100
+          ? " Dica: o Haiku aceita só 100 páginas — nas opções da extensão, troque para o Sonnet 5 (até 600 páginas)."
+          : "";
       throw new Error(
         "as peças selecionadas somam ~" + total + " páginas — acima do limite de " +
-          modelCaps.maxPages + " páginas por análise deste modelo. Desmarque algumas peças e analise por partes."
+          modelCaps.maxPages + " páginas por análise deste modelo. Desmarque algumas peças e analise por partes." +
+          dica
       );
     }
     return total;
@@ -223,7 +233,7 @@
 
   // Pré-voo gratuito de tokens (count_tokens): estima o tamanho do contexto e
   // bloqueia acima de 90% da janela do modelo. Falha da estimativa não bloqueia.
-  async function estimarContexto(messages) {
+  async function estimarContexto(messages, comPecasNovas) {
     let r = null;
     try {
       r = await rpc({
@@ -236,13 +246,16 @@
     if (!r || !r.tokens || !r.contextTokens) return null;
     const pct = Math.round((r.tokens / r.contextTokens) * 100);
     if (r.tokens > r.contextTokens * 0.9) {
+      // desmarcar peça não a remove do histórico — a saída certa depende da causa
       throw new Error(
-        "as peças selecionadas ocupam ~" + pct + "% do contexto do modelo (" +
-          Math.round(r.tokens / 1000) +
-          " mil tokens) — não sobra espaço para a análise. Desmarque algumas peças ou analise por partes."
+        "a conversa ocupa ~" + pct + "% do contexto do modelo (" +
+          Math.round(r.tokens / 1000) + " mil tokens) — não sobra espaço para a análise. " +
+          (comPecasNovas
+            ? "Desmarque algumas das peças novas, ou clique em ⟲ (Nova conversa) e selecione só as peças desta análise."
+            : "Clique em ⟲ (Nova conversa) e selecione só as peças desta análise.")
       );
     }
-    return { tokens: r.tokens, pct };
+    return { tokens: r.tokens, ctxTokens: r.contextTokens, pct };
   }
 
   // Remove breakpoints de cache antigos do histórico (a API aceita no máx. 4).
@@ -402,13 +415,16 @@
     }
     busy = true;
 
-    const key = selectedIds.slice().sort().join(",");
-    const attach = key !== lastSentKey; // (re)anexa peças quando a seleção muda
-    // mostra na mensagem quais peças entram no contexto neste turno
+    // Anexo INCREMENTAL: só as peças que ainda não estão no histórico entram
+    // neste turno. As já enviadas continuam valendo (fazem parte do prefixo
+    // cacheado da conversa) — reanexá-las duplicaria páginas e tokens.
+    const novas = selectedIds.filter((id) => !pecasNaConversa.has(id));
+    const attach = novas.length > 0;
+    // mostra na mensagem quais peças ENTRAM no contexto neste turno
     panel.addMessage(
       "user",
       text,
-      attach ? selectedIds.map((id) => metaDe(id).titulo) : null
+      attach ? novas.map((id) => metaDe(id).titulo) : null
     );
     panel.lockInput(true);
     panel.setStatus("");
@@ -419,30 +435,39 @@
 
     try {
       let userContent;
-      let infoCtx = "";
+      let paginas = 0;
       if (attach) {
-        await baixarSelecionadas(selectedIds);
-        const paginas = guardaPaginas(selectedIds); // falha ANTES de subir/enviar
-        await subirPecas(selectedIds);
+        await baixarSelecionadas(novas);
+        // a guarda conta TUDO que vai no request: histórico + peças novas
+        paginas = guardaPaginas([...pecasNaConversa, ...novas]);
+        await subirPecas(novas);
         stripOldCacheControl();
-        userContent = [...montarBlocos(selectedIds), { type: "text", text }];
-        panel.setStatus("Estimando o tamanho do contexto…");
-        const est = await estimarContexto([
-          ...conversation,
-          { role: "user", content: userContent },
-        ]);
-        panel.endPrep(); // confirma "peças anexadas" só depois de validar limites
-        if (est) {
-          infoCtx =
-            " (~" + Math.round(est.tokens / 1000) + " mil tokens" +
-            (paginas ? ", " + paginas + " págs." : "") + ", " + est.pct + "% do contexto)";
-        }
+        userContent = [...montarBlocos(novas), { type: "text", text }];
       } else {
+        paginas = guardaPaginas([...pecasNaConversa]);
         userContent = text;
       }
 
+      panel.setStatus("Estimando o tamanho do contexto…");
+      const est = await estimarContexto(
+        [...conversation, { role: "user", content: userContent }],
+        attach
+      );
+      if (attach) panel.endPrep(); // confirma "peças anexadas" após validar limites
+      let infoCtx = "";
+      if (est) {
+        infoCtx = " (~" + Math.round(est.tokens / 1000) + " mil tokens, " + est.pct + "% do contexto)";
+        panel.setContexto({
+          tokens: est.tokens,
+          ctxTokens: est.ctxTokens,
+          paginas,
+          maxPaginas: modelCaps ? modelCaps.maxPages : 0,
+          pecas: pecasNaConversa.size + novas.length,
+        });
+      }
+
       conversation.push({ role: "user", content: userContent });
-      lastSentKey = key;
+      for (const id of novas) pecasNaConversa.add(id);
 
       panel.setStatus("Analisando…" + infoCtx);
       assistantEl = panel.addMessage("assistant", "");
@@ -513,13 +538,13 @@
           st = "A resposta atingiu o tamanho máximo — peça para continuar, se necessário.";
         if (fim.stopReason === "model_context_window_exceeded")
           st =
-            "A conversa atingiu o limite de contexto do modelo — inicie uma nova conversa ou selecione menos peças.";
+            "A conversa atingiu o limite de contexto do modelo — clique em ⟲ (Nova conversa) e selecione só as peças desta análise.";
         panel.setStatus(st);
       } else {
         // resposta vazia: não grava turno (evitaria content vazio no próximo request)
         panel.removeMessage(assistantEl);
         conversation.pop(); // remove o turno do usuário correspondente
-        lastSentKey = null;
+        for (const id of novas) pecasNaConversa.delete(id); // peças saem junto
         panel.setStatus("O modelo não retornou texto. Tente novamente.");
       }
     } catch (e) {
@@ -530,8 +555,8 @@
       // desfaz o turno do usuário para permitir nova tentativa
       if (conversation.length && conversation[conversation.length - 1].role === "user") {
         conversation.pop();
-        lastSentKey = null;
       }
+      for (const id of novas) pecasNaConversa.delete(id); // peças do turno desfeito
     } finally {
       busy = false;
       panel.lockInput(false);

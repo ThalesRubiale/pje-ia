@@ -267,8 +267,15 @@ async function friendlyHttpError(resp) {
   if (resp.status === 400 && low.includes("prompt is too long")) {
     return "As peças selecionadas excedem o contexto do modelo. Desmarque algumas peças ou inicie uma nova conversa.";
   }
-  if (resp.status === 400 && low.includes("page")) {
-    return "As peças selecionadas somam mais páginas do que o modelo aceita por análise. Desmarque algumas peças e analise por partes.";
+  if (
+    resp.status === 400 &&
+    /\bpage/.test(low) &&
+    (low.includes("exceed") || low.includes("limit") || low.includes("maximum") || low.includes("too many"))
+  ) {
+    return (
+      "As peças selecionadas somam mais páginas de PDF do que o modelo aceita por análise. " +
+      "Desmarque algumas peças e analise por partes. (detalhe da API: " + apiMsg.slice(0, 200) + ")"
+    );
   }
   if (resp.status === 429) {
     return "Limite de requisições atingido. Aguarde alguns instantes e tente de novo.";

@@ -78,16 +78,23 @@ Haiku) e `effort` (não suportado no Haiku).
   como `<p>Em Anexo</p>` (o teor real está nos anexos "Documento de Comprovação"
   protocolados junto). Não é falha de download — o system prompt instrui o modelo a
   explicar isso e sugerir marcar os anexos.
+- **Anexo incremental de peças** (`pecasNaConversa`): cada peça entra no histórico UMA
+  única vez; a cada turno só o DELTA (peças ainda não enviadas) é anexado. Reanexar
+  tudo a cada mudança de seleção duplicava páginas/tokens no request (o histórico é
+  imutável) e estourava os limites já no segundo envio. Peça desmarcada permanece no
+  histórico até "Nova conversa" (⟲) — as mensagens de erro orientam isso. As guardas
+  de páginas/tokens contam o request INTEIRO (histórico + novas); o medidor de contexto
+  (`panel.setContexto`) mostra tokens e páginas acumulados vs. limites do modelo.
 - **Prompt caching**: `montarBlocos()` marca o último bloco com
   `cache_control: {type: "ephemeral"}` e `stripOldCacheControl()` remove breakpoints
-  antigos do histórico (a API aceita no máx. 4). Peças são (re)anexadas apenas quando a
-  seleção muda (`lastSentKey`).
+  antigos do histórico (a API aceita no máx. 4).
 - **Limite de payload**: 24 MB de base64 (`MAX_TOTAL_B64_CHARS`) com folga sob o limite de
   32 MB da API. `montarBlocos()` lança erro amigável se exceder — por isso
   `panel.endPrep()` (confirmação "peças anexadas") só é chamado **depois** de montar os
   blocos.
 - **Turnos desfeitos em erro**: em falha ou resposta vazia, `content.js` faz `pop()` do
-  turno do usuário e zera `lastSentKey` para permitir nova tentativa limpa.
+  turno do usuário e remove as peças do turno de `pecasNaConversa`, para permitir nova
+  tentativa limpa.
 - **Keepalive do service worker (MV3)**: o Chrome mata o worker após ~30 s sem eventos
   de extensão — fatal na geração de .docx, cujo code execution roda no servidor com
   longos silêncios no SSE (sintoma: "conexão com o serviço interrompida"). Durante um
@@ -115,8 +122,10 @@ texto e o checkbox correspondente é alternado. Detalhes fáceis de quebrar:
 
 ## Geração de .docx (skill oficial)
 
-Botão "📄 Gerar .docx" no painel: request `gerarDoc` com as peças selecionadas + instrução
-(texto digitado ou relatório padrão). O worker extrai o `file_id` dos blocos
+Botão "📄 Gerar .docx" no painel, em dois cliques guiados: o 1º clique preenche o campo
+com a instrução padrão (editável) e explica o próximo passo; o 2º clique dispara o
+request `gerarDoc` com as peças selecionadas + a instrução do campo. O worker extrai o
+`file_id` dos blocos
 `bash_code_execution_tool_result` (fica com o **último** `.docx` gerado), baixa via Files
 API e repassa os bytes pelo Port; o content script dispara o download com Blob + âncora
 (sem permissão `downloads`). Custo: code execution tem franquia de 1.550 h/mês por

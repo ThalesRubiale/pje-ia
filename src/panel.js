@@ -289,17 +289,21 @@ var PjePanel = (function () {
                 <div class="mention-list" role="listbox"></div>
               </div>
               <div class="status" aria-live="polite"></div>
+              <div class="gauge" hidden title="Quanto do limite do modelo esta conversa já ocupa (tokens e páginas de PDF). Ao encher, clique em ⟲ para começar uma nova conversa.">
+                <div class="gauge-bar"><div class="gauge-fill"></div></div>
+                <span class="gauge-txt"></span>
+              </div>
               <div class="ctxbar" hidden></div>
               <div class="quick"></div>
               <div class="toolbar">
                 <button class="tgl-search" aria-pressed="false" title="Liga/desliga a busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…). Com a busca ligada, escreva a pergunta e use o botão Enviar normalmente.">🔍 Jurisprudência</button>
-                <button class="btn-docx" title="Gera um documento Word (.docx) com base nas peças marcadas. Digite uma instrução no campo abaixo e clique aqui — ou clique direto para um relatório padrão do processo. (Não use o botão Enviar para isso.)">📄 Gerar .docx</button>
+                <button class="btn-docx" title="Gera um documento Word (.docx) com base nas peças marcadas. 1º clique: preenche a instrução no campo (edite à vontade). 2º clique: gera o documento. Não use o botão Enviar para isso.">📄 Gerar .docx</button>
               </div>
               <div class="inrow">
                 <textarea class="in" rows="1" placeholder="Pergunte sobre as peças… (@ cita uma peça)"></textarea>
                 <button class="send">Enviar</button>
               </div>
-              <div class="hint-key"><b>@</b> cita peças • <b>Enter</b> envia a pergunta (Shift+Enter quebra linha) • <b>📄 Gerar .docx</b>: digite a instrução e clique no botão — vazio gera o relatório padrão.</div>
+              <div class="hint-key"><b>@</b> cita peças • <b>Enter</b> envia a pergunta (Shift+Enter quebra linha) • <b>📄 Gerar .docx</b>: 1º clique preenche a instrução para revisão; 2º clique gera o documento.</div>
             </div>
           </div>
         </div>
@@ -319,6 +323,9 @@ var PjePanel = (function () {
     const msgs = $(".msgs");
     const ft = $(".ft");
     const statusEl = $(".status");
+    const gaugeEl = $(".gauge");
+    const gaugeFill = $(".gauge-fill");
+    const gaugeTxt = $(".gauge-txt");
     const ctxbar = $(".ctxbar");
     const mentionEl = $(".mention");
     const mentionList = $(".mention-list");
@@ -372,17 +379,34 @@ var PjePanel = (function () {
         : "Busca de jurisprudência desligada.";
     });
 
-    // Geração de .docx: entrega o texto digitado (instrução) + peças marcadas
+    // Geração de .docx em DOIS cliques guiados: o primeiro clique preenche o
+    // campo com a instrução (padrão, editável) e explica o próximo passo; o
+    // segundo clique — com instrução no campo — dispara a geração.
+    const INSTRUCAO_DOCX_PADRAO =
+      "Elabore um relatório completo do processo: identificação e partes, síntese dos fatos, " +
+      "linha do tempo dos atos processuais, pedidos, teses de cada parte, provas produzidas e " +
+      "situação atual do feito.";
     const btnDocx = $(".btn-docx");
     let gerarDocCb = null;
     btnDocx.addEventListener("click", () => {
       if (!gerarDocCb) return;
-      const t = inEl.value;
-      gerarDocCb(t, getSelected());
-      if (t.trim()) {
-        inEl.value = "";
-        inEl.style.height = "auto";
+      if (!getSelected().length) {
+        statusEl.textContent =
+          "Para gerar o documento, primeiro marque as peças na lista ao lado.";
+        return;
       }
+      const t = inEl.value.trim();
+      if (!t) {
+        inEl.value = INSTRUCAO_DOCX_PADRAO;
+        autoresize();
+        inEl.focus();
+        statusEl.textContent =
+          "Instrução preenchida no campo — edite se quiser e clique em “📄 Gerar .docx” de novo para gerar o documento.";
+        return;
+      }
+      gerarDocCb(t, getSelected());
+      inEl.value = "";
+      inEl.style.height = "auto";
       closeMention();
     });
 
@@ -932,6 +956,28 @@ var PjePanel = (function () {
       },
       setStatus(s) {
         statusEl.textContent = s || "";
+      },
+      // Medidor de contexto da conversa: barra + resumo (tokens e páginas
+      // acumulados no request vs. limites do modelo). null esconde.
+      setContexto(info) {
+        if (!info || !info.ctxTokens) {
+          gaugeEl.hidden = true;
+          return;
+        }
+        const pctTok = info.tokens / info.ctxTokens;
+        const pctPag = info.maxPaginas ? (info.paginas || 0) / info.maxPaginas : 0;
+        const pct = Math.min(1, Math.max(pctTok, pctPag));
+        gaugeFill.style.width = Math.round(pct * 100) + "%";
+        gaugeEl.classList.toggle("warn", pct >= 0.7 && pct < 0.9);
+        gaugeEl.classList.toggle("crit", pct >= 0.9);
+        gaugeTxt.textContent =
+          "Conversa: " + (info.pecas || 0) + " peça(s), ~" +
+          Math.round(info.tokens / 1000) + " mil tokens (" +
+          Math.round(pctTok * 100) + "%)" +
+          (info.maxPaginas
+            ? " • " + (info.paginas || 0) + "/" + info.maxPaginas + " págs. de PDF"
+            : "");
+        gaugeEl.hidden = false;
       },
       lockInput(b) {
         inEl.disabled = b;

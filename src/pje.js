@@ -83,23 +83,66 @@ var PJE = (function () {
     return corpo;
   }
 
-  // Conta as páginas de um PDF por heurística no binário: ocorrências de
-  // "/Type /Page" (objetos de página) com fallback no maior "/Count N" da
-  // árvore de páginas. Subconta em PDFs com object streams comprimidos — a
-  // estimativa de tokens (count_tokens) é a guarda definitiva nesses casos.
+  // Conta as páginas de um PDF por heurística no binário, em três passos:
+  // 1) ocorrências de "/Type /Page" (objetos de página) no texto cru;
+  // 2) maior "/Count N" da árvore de páginas;
+  // 3) PDFs modernos guardam os objetos em object streams comprimidos — nada
+  //    aparece no cru; descomprime os streams /ObjStm (FlateDecode) com a API
+  //    nativa do navegador e conta os objetos de página lá dentro.
+  const RE_PAGINA = /\/Type\s*\/Page(?![a-zA-Z])/g;
+
   async function contarPaginas(blob) {
     try {
-      const s = new TextDecoder("latin1").decode(await blob.arrayBuffer());
-      const m = s.match(/\/Type\s*\/Page[^s]/g);
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const s = new TextDecoder("latin1").decode(bytes);
+      const m = s.match(RE_PAGINA);
       if (m && m.length) return m.length;
       let max = 0;
       const re = /\/Count\s+(\d+)/g;
       let mm;
       while ((mm = re.exec(s))) max = Math.max(max, parseInt(mm[1], 10));
-      return max || 1;
+      if (max) return max;
+      return (await contarPaginasObjStm(bytes, s)) || 1;
     } catch {
       return 1;
     }
+  }
+
+  // Latin1 preserva a relação 1:1 entre índice na string e offset no binário —
+  // por isso dá para achar "stream"/"endstream" na string e fatiar os bytes.
+  async function contarPaginasObjStm(bytes, s) {
+    let total = 0;
+    let lidos = 0;
+    const re = /\/Type\s*\/ObjStm/g;
+    let m;
+    while ((m = re.exec(s)) && lidos < 400) {
+      const st = s.indexOf("stream", m.index);
+      if (st < 0) break;
+      let ini = st + 6;
+      if (s.charCodeAt(ini) === 13) ini++;
+      if (s.charCodeAt(ini) === 10) ini++;
+      let fim = s.indexOf("endstream", ini);
+      if (fim < 0) break;
+      // remove o fim-de-linha entre os dados e "endstream" (bytes extras
+      // depois do terminador zlib fariam a descompressão falhar)
+      while (fim > ini && (s.charCodeAt(fim - 1) === 10 || s.charCodeAt(fim - 1) === 13)) fim--;
+      lidos++;
+      try {
+        const txt = new TextDecoder("latin1").decode(await inflar(bytes.subarray(ini, fim)));
+        const mm = txt.match(RE_PAGINA);
+        if (mm) total += mm.length;
+      } catch {
+        /* stream com outro filtro ou corrompido: ignora e segue */
+      }
+    }
+    return total;
+  }
+
+  // Descomprime um stream FlateDecode (formato zlib) com DecompressionStream.
+  async function inflar(u8) {
+    const ds = new DecompressionStream("deflate");
+    const st = new Blob([u8]).stream().pipeThrough(ds);
+    return new Uint8Array(await new Response(st).arrayBuffer());
   }
 
   // Interpreta o corpo da resposta. Devolve null quando veio vazio
