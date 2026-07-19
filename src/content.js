@@ -290,11 +290,23 @@
   };
   function sanearCitacoes(blocks) {
     return blocks.map((b) => {
-      if (!b || b.type !== "text" || !Array.isArray(b.citations)) return b;
+      if (!b || b.type !== "text" || b.citations == null) return b;
+      // lista vazia (ou não-lista): melhor omitir o campo do que reenviar
+      if (!Array.isArray(b.citations) || !b.citations.length) {
+        const semCit = Object.assign({}, b);
+        delete semCit.citations;
+        return semCit;
+      }
       return Object.assign({}, b, {
         citations: b.citations.map((c) => {
           const campos = c && CAMPOS_CITACAO[c.type];
-          if (!campos) return c;
+          if (!campos) {
+            // tipo de citação desconhecido: remove ao menos os campos que a
+            // API sabidamente emite mas não aceita de volta
+            const limpa = Object.assign({}, c);
+            delete limpa.file_id;
+            return limpa;
+          }
           const limpa = {};
           for (const k of campos) if (c[k] !== undefined) limpa[k] = c[k];
           return limpa;
