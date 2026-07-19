@@ -25,9 +25,14 @@ por `chrome.runtime.connect({name: "claude"})`.
   Chips da barra de contexto, contador `(x/y no contexto)`, popup `@` e mensagens são
   *projeções* desse estado — nunca guarde seleção em outro lugar.
 - **Download do PJe é stateful**: o endpoint REST só libera peças já "abertas" na sessão
-  JSF. Em 404, `pje.js` simula o clique na timeline (A4J) e faz poll com HEAD até liberar.
-  As ativações são **serializadas** (`activationChain`) — o JSF não tolera dois submits
-  simultâneos na mesma view.
+  JSF. Em 404 **ou corpo vazio com HTTP 200**, `pje.js` simula o clique na timeline (A4J)
+  e faz poll com HEAD até liberar. As ativações são **serializadas** (`activationChain`) —
+  o JSF não tolera dois submits simultâneos na mesma view. Cada download loga
+  `[PJe IA] peça …` no console da página (F12) para diagnóstico.
+- **Peças de encaminhamento são normais no PJe**: petições cujo conteúdo integral é algo
+  como `<p>Em Anexo</p>` (o teor real está nos anexos "Documento de Comprovação"
+  protocolados junto). Não é falha de download — o system prompt instrui o modelo a
+  explicar isso e sugerir marcar os anexos.
 - **Prompt caching**: `montarBlocos()` marca o último bloco com
   `cache_control: {type: "ephemeral"}` e `stripOldCacheControl()` remove breakpoints
   antigos do histórico (a API aceita no máx. 4). Peças são (re)anexadas apenas quando a

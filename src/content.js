@@ -8,9 +8,14 @@
     "Você é um assistente jurídico que analisa autos de processos do PJe.",
     "Responda sempre em português do Brasil.",
     "Baseie-se SOMENTE nos documentos anexados (peças selecionadas pelo usuário).",
-    "Cite a peça de origem ao afirmar fatos (ex.: 'na Petição 1002233…').",
+    "Cite a peça de origem pelo nome ao afirmar fatos (ex.: 'na Contestação…').",
     "Seja objetivo e técnico. Se a informação não estiver nos documentos selecionados,",
     "diga explicitamente que não consta nas peças fornecidas — não invente.",
+    "Atenção a peças de mero encaminhamento: no PJe é comum a petição conter apenas",
+    "uma remissão como 'Em anexo' ou 'Segue anexo', com o conteúdo real nos documentos",
+    "anexos protocolados junto dela. Nesse caso, diga claramente que a peça é só um",
+    "encaminhamento e oriente o usuário a marcar também os anexos correspondentes",
+    "(ex.: as peças 'Documento de Comprovação' logo abaixo dela na lista).",
     "Formate a resposta em markdown quando ajudar a leitura: use títulos curtos,",
     "listas e tabelas (ex.: linha do tempo dos atos, partes, pedidos).",
   ].join(" ");
@@ -86,7 +91,14 @@
       while (queue.length) {
         const id = queue.shift();
         panel.setPrepState(id, "loading");
-        if (!docsCache.has(id)) docsCache.set(id, await PJE.baixar(id));
+        if (!docsCache.has(id)) {
+          try {
+            docsCache.set(id, await PJE.baixar(id));
+          } catch (e) {
+            // identifica a peça pelo nome na mensagem de erro
+            throw new Error('"' + metaDe(id).titulo + '" — ' + (e && e.message ? e.message : e));
+          }
+        }
         panel.setPrepState(id, "done");
       }
     }

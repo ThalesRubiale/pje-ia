@@ -57,6 +57,8 @@ var PJE = (function () {
 
   // Baixa uma peça pelo id. Endpoint REST autenticado por cookie de sessão.
   // Retorna {kind:"pdf", b64, size} ou {kind:"text", text} conforme o content-type.
+  // Corpo vazio com HTTP 200 é tratado como "peça não liberada na sessão":
+  // ativa a peça na timeline e tenta uma segunda vez antes de desistir.
   async function baixar(id) {
     const url =
       "/" + getBase() + "/seam/resource/rest/pje-legacy/documento/download/" + id;
@@ -66,9 +68,29 @@ var PJE = (function () {
       r = await fetch(url, { credentials: "include" });
     }
     if (!r.ok) throw new Error("falha ao baixar a peça " + id + " (HTTP " + r.status + ")");
+    let corpo = await lerCorpo(r, id);
+    if (!corpo) {
+      await ativarPeca(id);
+      r = await fetch(url, { credentials: "include" });
+      if (!r.ok) throw new Error("falha ao baixar a peça " + id + " (HTTP " + r.status + ")");
+      corpo = await lerCorpo(r, id);
+      if (!corpo) {
+        throw new Error(
+          "a peça " + id + " retornou vazia — abra-a na linha do tempo do processo e tente novamente"
+        );
+      }
+    }
+    return corpo;
+  }
+
+  // Interpreta o corpo da resposta. Devolve null quando veio vazio
+  // (PDF de 0 bytes ou texto em branco após a extração).
+  async function lerCorpo(r, id) {
     const ct = (r.headers.get("content-type") || "").toLowerCase();
     if (ct.includes("pdf")) {
       const blob = await r.blob();
+      console.debug("[PJe IA] peça", id, "PDF de", blob.size, "bytes");
+      if (!blob.size) return null;
       const b64 = await blobToB64(blob);
       return { kind: "pdf", b64, size: blob.size };
     }
@@ -79,11 +101,14 @@ var PJE = (function () {
       try {
         const doc = new DOMParser().parseFromString(raw, "text/html");
         doc.querySelectorAll("script,style").forEach((n) => n.remove());
-        text = (doc.body ? doc.body.textContent : raw).replace(/\n{3,}/g, "\n\n").trim();
+        text = (doc.body ? doc.body.textContent : raw).replace(/\n{3,}/g, "\n\n");
       } catch {
         /* mantém o bruto */
       }
     }
+    text = text.trim();
+    console.debug("[PJe IA] peça", id, "texto de", text.length, "chars (" + ct + ")");
+    if (!text) return null;
     return { kind: "text", text };
   }
 
