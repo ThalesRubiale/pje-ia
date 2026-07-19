@@ -180,6 +180,8 @@ var PjePanel = (function () {
 
   // Ícones SVG (evita depender de glifos unicode que podem faltar na fonte)
   const SVG = {
+    fs:
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/></svg>',
     expand:
       '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/></svg>',
     close:
@@ -261,6 +263,7 @@ var PjePanel = (function () {
           <button class="dl" title="Baixar conversa (.md)">${SVG.download}</button>
           <button class="reset" title="Nova conversa">${SVG.reset}</button>
           <button class="expand" title="Expandir / recolher">${SVG.expand}</button>
+          <button class="fs" title="Tela cheia / restaurar">${SVG.fs}</button>
           <button class="close" title="Fechar">${SVG.close}</button>
         </div>
         <div class="content">
@@ -356,9 +359,22 @@ var PjePanel = (function () {
       wrap.classList.remove("pulse");
     }
     launcher.addEventListener("click", open);
-    closeBtn.addEventListener("click", () => wrap.classList.remove("open", "expanded"));
-    expandBtn.addEventListener("click", () => wrap.classList.toggle("expanded"));
-    backdrop.addEventListener("click", () => wrap.classList.remove("expanded"));
+    closeBtn.addEventListener("click", () => wrap.classList.remove("open", "expanded", "full"));
+    expandBtn.addEventListener("click", () => {
+      wrap.classList.remove("full"); // sair da tela cheia volta ao expandido/normal
+      wrap.classList.toggle("expanded");
+    });
+    // Tela cheia: terceiro estágio (flutuante → expandido → tela cheia).
+    // Entrar implica o layout expandido (peças na lateral); sair volta ao expandido.
+    const fsBtn = $(".fs");
+    fsBtn.addEventListener("click", () => {
+      if (wrap.classList.contains("full")) {
+        wrap.classList.remove("full");
+      } else {
+        wrap.classList.add("expanded", "full");
+      }
+    });
+    backdrop.addEventListener("click", () => wrap.classList.remove("expanded", "full"));
 
     let resetCb = null;
     resetBtn.addEventListener("click", () => {
