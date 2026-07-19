@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      html, body { width: 340px; }
+    </style>
+  </head>
+  <body>
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" />
+      <div>
+        <div class="t">PJe IA</div>
+        <div class="s">Análise de autos com Claude</div>
+      </div>
+    </div>
+
+    <div class="body">
+      <div id="chip" class="status-chip warn">
+        <span class="dot"></span><span id="chipText">Chave não configurada</span>
+      </div>
+
+      <label class="field" for="apiKey">
+        Chave da API (Anthropic)
+        <span class="hint">Não tem uma chave? <a href="help.html" target="_blank" style="color:var(--gold-2);font-weight:600">Veja o passo a passo →</a></span>
+      </label>
+      <div class="pw-row">
+        <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+        <button class="toggle-pw" id="togglePw" type="button">mostrar</button>
+      </div>
+
+      <label class="field" for="model">Modelo</label>
+      <select id="model">
+        <option value="claude-sonnet-5">Claude Sonnet 5 (recomendado)</option>
+        <option value="claude-opus-4-8">Claude Opus 4.8</option>
+        <option value="claude-fable-5">Claude Fable 5 (mais capaz)</option>
+        <option value="claude-haiku-4-5">Claude Haiku 4.5 (mais barato)</option>
+      </select>
+
+      <button class="btn" id="save">Salvar configuração</button>
+      <div class="save-status" id="saveStatus"></div>
+
+      <div class="steps">
+        <h3>Como usar</h3>
+        <div class="step">
+          <div class="n">1</div>
+          <div class="txt">Salve sua <b>chave</b> acima.</div>
+        </div>
+        <div class="step">
+          <div class="n">2</div>
+          <div class="txt">Abra os <b>autos de um processo</b> no PJe (já logado).</div>
+        </div>
+        <div class="step">
+          <div class="n">3</div>
+          <div class="txt">Clique no botão <b>⚖️ Analisar com IA</b> no canto inferior direito da página.</div>
+        </div>
+      </div>
+
+      <div class="note">
+        As peças marcadas são enviadas à API da Anthropic. Processos podem conter dados sigilosos — use conforme as normas do seu tribunal.
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

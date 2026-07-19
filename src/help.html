@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>PJe IA — Como criar sua chave da API</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      body { display: block; padding: 0 0 60px; }
+      .page { max-width: 720px; margin: 0 auto; padding: 0 20px; }
+      .brand { border-radius: 0; }
+      h1.serif { font-size: 26px; margin: 28px 0 6px; color: var(--ink); }
+      .lead { color: var(--muted); font-size: 15px; margin: 0 0 26px; }
+      .card {
+        background: #fff; border: 1px solid var(--line); border-radius: 14px;
+        padding: 22px 24px; margin-bottom: 20px; box-shadow: 0 6px 22px rgba(20, 36, 61, 0.05);
+      }
+      .card .head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+      .card .num {
+        flex: none; width: 30px; height: 30px; border-radius: 50%;
+        background: var(--ink); color: #fff; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .card h2 { font-family: Georgia, serif; font-size: 18px; margin: 0; color: var(--ink); }
+      .card p { margin: 8px 0; font-size: 14.5px; }
+      .card ul { margin: 8px 0 0; padding-left: 20px; font-size: 14.5px; }
+      .card li { margin: 5px 0; }
+      a.gobtn {
+        display: inline-flex; align-items: center; gap: 8px;
+        margin-top: 12px; text-decoration: none;
+        background: linear-gradient(180deg, var(--gold), var(--gold-2));
+        color: #23180a; font-weight: 700; padding: 10px 18px; border-radius: 10px;
+      }
+      a.link { color: var(--gold-2); font-weight: 600; }
+
+      /* Mock de janela do navegador com destaque no botão */
+      .mock {
+        margin-top: 16px; border: 1px solid #dfe4ea; border-radius: 10px;
+        overflow: hidden; background: #f4f6f9;
+      }
+      .mock .bar { background: #e9edf2; padding: 8px 12px; display: flex; gap: 6px; align-items: center; }
+      .mock .bar i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+      .mock .bar .r { background: #ec6a5e; } .mock .bar .y { background: #f4bf4f; } .mock .bar .g2 { background: #61c554; }
+      .mock .url { margin-left: 10px; background: #fff; border-radius: 6px; padding: 4px 10px; font-size: 12px; color: #55606e; flex: 1; }
+      .mock .screen { padding: 20px; position: relative; min-height: 120px; }
+      .mock .row { height: 14px; background: #e2e7ee; border-radius: 4px; margin: 10px 0; }
+      .mock .row.s { width: 55%; } .mock .row.m { width: 78%; }
+      .greenbtn {
+        display: inline-block; background: #1a7f37; color: #fff; font-weight: 700;
+        padding: 9px 16px; border-radius: 8px; font-size: 13.5px; margin-top: 8px;
+        box-shadow: 0 0 0 4px rgba(26, 127, 55, 0.25);
+        animation: glow 1.6s ease-in-out infinite;
+      }
+      @keyframes glow {
+        0%, 100% { box-shadow: 0 0 0 4px rgba(26, 127, 55, 0.22); }
+        50% { box-shadow: 0 0 0 8px rgba(26, 127, 55, 0.08); }
+      }
+      .callout {
+        display: inline-flex; align-items: center; gap: 8px; margin-left: 10px;
+        color: #1a7f37; font-weight: 700; font-size: 13px;
+      }
+      .callout .arrow { font-size: 18px; }
+      .warn-box {
+        background: var(--warn-bg); border: 1px solid #f0dcae; border-radius: 10px;
+        padding: 12px 16px; font-size: 13.5px; color: var(--warn);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" />
+      <div>
+        <div class="t">PJe IA</div>
+        <div class="s">Como obter sua chave da API</div>
+      </div>
+    </div>
+
+    <div class="page">
+      <h1 class="serif">Criar sua chave da API da Anthropic</h1>
+      <p class="lead">
+        A extensão usa o Claude (Anthropic) para analisar os autos. Você precisa de uma
+        <strong>chave de API própria</strong> e de <strong>crédito</strong> na sua conta. Leva ~3 minutos.
+      </p>
+
+      <div class="card">
+        <div class="head"><div class="num">1</div><h2>Acesse o Console da Anthropic</h2></div>
+        <p>Crie uma conta (ou entre) no console de desenvolvedores. É diferente do chat claude.ai.</p>
+        <a class="gobtn" href="https://console.anthropic.com" target="_blank" rel="noopener">Abrir console.anthropic.com ↗</a>
+      </div>
+
+      <div class="card">
+        <div class="head"><div class="num">2</div><h2>Adicione crédito (botão verde)</h2></div>
+        <p>Vá em <strong>Settings → Billing (Plans &amp; Billing)</strong> e clique no botão verde para adicionar crédito pré-pago. Um valor pequeno já basta para começar.</p>
+        <div class="mock">
+          <div class="bar"><i class="r"></i><i class="y"></i><i class="g2"></i>
+            <span class="url">console.anthropic.com/settings/billing</span>
+          </div>
+          <div class="screen">
+            <div class="row m"></div>
+            <div class="row s"></div>
+            <div>
+              <span class="greenbtn">+ Add credits</span>
+              <span class="callout"><span class="arrow">←</span> clique aqui</span>
+            </div>
+          </div>
+        </div>
+        <a class="gobtn" href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener">Abrir Billing ↗</a>
+        <p style="margin-top:14px"><em>Nesta etapa você decide o valor — a extensão não cobra nada e não adiciona crédito por você.</em></p>
+      </div>
+
+      <div class="card">
+        <div class="head"><div class="num">3</div><h2>Crie a API Key</h2></div>
+        <p>Vá em <strong>Settings → API Keys</strong> e clique em <strong>Create Key</strong>. Dê um nome (ex.: "PJe IA").</p>
+        <div class="mock">
+          <div class="bar"><i class="r"></i><i class="y"></i><i class="g2"></i>
+            <span class="url">console.anthropic.com/settings/keys</span>
+          </div>
+          <div class="screen">
+            <div class="row m"></div>
+            <div class="row s"></div>
+            <div>
+              <span class="greenbtn">Create Key</span>
+              <span class="callout"><span class="arrow">←</span> clique aqui</span>
+            </div>
+          </div>
+        </div>
+        <a class="gobtn" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Abrir API Keys ↗</a>
+      </div>
+
+      <div class="card">
+        <div class="head"><div class="num">4</div><h2>Copie e cole na extensão</h2></div>
+        <p>A chave aparece <strong>uma única vez</strong> (começa com <code>sk-ant-...</code>). Copie na hora.</p>
+        <ul>
+          <li>Clique no ícone <strong>⚖️ PJe IA</strong> na barra do Chrome.</li>
+          <li>Cole a chave no campo, escolha o modelo e clique em <strong>Salvar</strong>.</li>
+        </ul>
+      </div>
+
+      <div class="warn-box">
+        🔒 Sua chave fica só neste navegador (não é enviada a lugar nenhum além da própria API da Anthropic).
+        As peças que você marcar são enviadas ao Claude para análise — processos podem conter dados sigilosos, use com critério.
+      </div>
+    </div>
+  </body>
+</html>

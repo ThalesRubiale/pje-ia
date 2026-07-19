@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>PJe IA — Configuração</title>
+    <link rel="stylesheet" href="ui.css" />
+    <style>
+      body { display: flex; justify-content: center; padding: 40px 16px; }
+      .card { width: 100%; max-width: 520px; background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px rgba(20, 36, 61, 0.08); }
+      .brand { padding: 22px 26px; }
+      .body { padding: 24px 26px 28px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="brand">
+        <img src="../icons/icon48.png" alt="" />
+        <div>
+          <div class="t">PJe IA — Configuração</div>
+          <div class="s">Análise de autos com Claude</div>
+        </div>
+      </div>
+
+      <div class="body">
+        <div id="chip" class="status-chip warn">
+          <span class="dot"></span><span id="chipText">Chave não configurada</span>
+        </div>
+
+        <label class="field" for="apiKey">
+          Chave da API (Anthropic)
+          <span class="hint">Armazenada apenas neste navegador. Não tem uma chave? <a href="help.html" target="_blank" style="color:var(--gold-2);font-weight:600">Veja o passo a passo →</a></span>
+        </label>
+        <div class="pw-row">
+          <input id="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off" />
+          <button class="toggle-pw" id="togglePw" type="button">mostrar</button>
+        </div>
+
+        <label class="field" for="model">Modelo</label>
+        <select id="model">
+          <option value="claude-sonnet-5">Claude Sonnet 5 (recomendado)</option>
+          <option value="claude-opus-4-8">Claude Opus 4.8</option>
+          <option value="claude-fable-5">Claude Fable 5 (mais capaz)</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 (mais barato)</option>
+        </select>
+
+        <button class="btn" id="save">Salvar configuração</button>
+        <div class="save-status" id="saveStatus"></div>
+
+        <div class="note">
+          ⚠️ As peças selecionadas são enviadas à API da Anthropic. Processos podem conter dados pessoais/sigilosos — use conforme as normas do seu tribunal.
+        </div>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

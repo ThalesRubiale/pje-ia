@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "PJe IA — Análise de Processos",
+  "version": "0.1.0",
+  "description": "Painel de chat com IA (Claude) para analisar os autos do PJe 1º grau. Selecione as peças e converse com o modelo.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://pje.tjce.jus.br/*",
+    "https://api.anthropic.com/*"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "options_page": "src/options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://pje.tjce.jus.br/pje1grau/*"],
+      "js": ["src/pje.js", "src/panel.js", "src/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/panel.css", "icons/icon48.png"],
+      "matches": ["https://pje.tjce.jus.br/*"]
+    }
+  ],
+  "action": {
+    "default_title": "PJe IA — configurar e usar",
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  }
+}
