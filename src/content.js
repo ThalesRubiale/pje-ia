@@ -278,6 +278,31 @@
     return { tokens: r.tokens, ctxTokens: r.contextTokens, pct };
   }
 
+  // A API devolve nas citações campos que NÃO aceita de volta num request
+  // (ex.: file_id dentro de page_location → 400 "Extra inputs are not
+  // permitted" ao reenviar o histórico). Antes de gravar a resposta na
+  // conversa, cada citação é reduzida à whitelist de campos do seu tipo.
+  const CAMPOS_CITACAO = {
+    page_location: ["type", "cited_text", "document_index", "document_title", "start_page_number", "end_page_number"],
+    char_location: ["type", "cited_text", "document_index", "document_title", "start_char_index", "end_char_index"],
+    content_block_location: ["type", "cited_text", "document_index", "document_title", "start_block_index", "end_block_index"],
+    web_search_result_location: ["type", "cited_text", "url", "title", "encrypted_index"],
+  };
+  function sanearCitacoes(blocks) {
+    return blocks.map((b) => {
+      if (!b || b.type !== "text" || !Array.isArray(b.citations)) return b;
+      return Object.assign({}, b, {
+        citations: b.citations.map((c) => {
+          const campos = c && CAMPOS_CITACAO[c.type];
+          if (!campos) return c;
+          const limpa = {};
+          for (const k of campos) if (c[k] !== undefined) limpa[k] = c[k];
+          return limpa;
+        }),
+      });
+    });
+  }
+
   // Remove breakpoints de cache antigos do histórico (a API aceita no máx. 4).
   function stripOldCacheControl() {
     for (const turn of conversation) {
@@ -551,7 +576,7 @@
           role: "assistant",
           content:
             fim.content && fim.content.length
-              ? fim.content
+              ? sanearCitacoes(fim.content)
               : [{ type: "text", text: acc.replace(/\uE000\d+\uE001/g, "") }],
         });
         // turno gravado com tools declaradas \u2192 mant\u00EA-las at\u00E9 "Nova conversa"

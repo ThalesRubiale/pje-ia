@@ -299,14 +299,17 @@ var PjePanel = (function () {
               <div class="ctxbar" hidden></div>
               <div class="quick"></div>
               <div class="toolbar">
-                <button class="tgl-search" aria-pressed="false" title="Liga/desliga a busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…). Com a busca ligada, escreva a pergunta e use o botão Enviar normalmente.">🔍 Jurisprudência</button>
-                <button class="btn-docx" title="Gera um documento Word (.docx) com base nas peças marcadas. 1º clique: preenche a instrução no campo (edite à vontade). 2º clique: gera o documento. Não use o botão Enviar para isso.">📄 Gerar .docx</button>
+                <span class="ctxlab">Ferramentas</span>
+                <div class="tools">
+                  <button class="tgl-search" aria-pressed="false" title="Liga/desliga a busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…). Com a busca ligada, escreva a pergunta e use o botão Enviar normalmente.">🔍 Jurisprudência</button>
+                  <button class="btn-docx" title="Gera um documento Word (.docx) com base nas peças marcadas. 1º clique: preenche a instrução no campo (edite à vontade). 2º clique: gera o documento. Não use o botão Enviar para isso.">📄 Gerar .docx</button>
+                </div>
               </div>
               <div class="inrow">
                 <textarea class="in" rows="1" placeholder="Pergunte sobre as peças… (@ cita uma peça)"></textarea>
                 <button class="send">Enviar</button>
               </div>
-              <div class="hint-key"><b>@</b> cita peças • <b>Enter</b> envia a pergunta (Shift+Enter quebra linha) • <b>📄 Gerar .docx</b>: 1º clique preenche a instrução para revisão; 2º clique gera o documento.</div>
+              <div class="hint-key"><b>@</b> cita peças &nbsp;·&nbsp; <b>Enter</b> envia &nbsp;·&nbsp; <b>Shift+Enter</b> quebra linha &nbsp;·&nbsp; <b>📄 .docx</b> em 2 cliques: revisar → gerar</div>
             </div>
           </div>
         </div>
@@ -432,6 +435,9 @@ var PjePanel = (function () {
     quickLab.className = "ctxlab";
     quickLab.textContent = "Perguntas prontas";
     quickEl.appendChild(quickLab);
+    const quickList = document.createElement("div");
+    quickList.className = "quick-list";
+    quickEl.appendChild(quickList);
     for (const a of ACOES_RAPIDAS) {
       const b = document.createElement("button");
       b.className = "quick-btn";
@@ -442,7 +448,7 @@ var PjePanel = (function () {
         autoresize();
         inEl.focus();
       });
-      quickEl.appendChild(b);
+      quickList.appendChild(b);
     }
 
     // -------------------------------------------------------------------------
@@ -548,8 +554,12 @@ var PjePanel = (function () {
       ctxbar.hidden = false;
       const lab = document.createElement("span");
       lab.className = "ctxlab";
-      lab.textContent = "Peças no contexto";
+      lab.textContent = "Peças no contexto (" + sel.length + ")";
       ctxbar.appendChild(lab);
+      // bandeja própria para os chips: rolagem interna sem empurrar o rótulo
+      const bandeja = document.createElement("div");
+      bandeja.className = "chips";
+      ctxbar.appendChild(bandeja);
       for (const d of sel) {
         const chip = document.createElement("span");
         chip.className =
@@ -564,7 +574,7 @@ var PjePanel = (function () {
           setDocChecked(d.id, false);
           syncSelection();
         });
-        ctxbar.appendChild(chip);
+        bandeja.appendChild(chip);
       }
       prevChipIds = new Set(sel.map((d) => d.id));
     }

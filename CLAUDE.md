@@ -43,7 +43,10 @@ Haiku) e `effort` (não suportado no Haiku).
 - **Assistant no histórico é SEMPRE array de blocos** (`response.content` completo), nunca
   string: a API exige thinking assinado intacto e os blocos de ferramenta/citações nos
   turnos seguintes. Em fallback (sem blocos), texto puro com os placeholders de citação
-  removidos.
+  removidos. **Citações são saneadas antes de ir ao histórico** (`sanearCitacoes` em
+  `content.js`): a resposta traz campos que o request rejeita (ex.: `file_id` em
+  `page_location` → 400 "Extra inputs are not permitted"); cada citação é reduzida à
+  whitelist de campos do seu tipo.
 - **Dois tipos de request, nunca misturados**: *chat/busca* (documentos + citações +
   web tools quando o toggle "Jurisprudência" está ligado — e, uma vez usadas na
   conversa, as web tools seguem declaradas nos turnos seguintes mesmo com o toggle
