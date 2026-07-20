@@ -78,6 +78,19 @@
   // invalidando o cache de prefixo e arriscando rejeição do histórico.
   let buscaNaConversa = false;
   let busy = false;
+  // Estimativa dinâmica de contexto (dispara quando a seleção muda): timer de
+  // debounce + número de sequência para descartar respostas atrasadas +
+  // chave da última medição (refreshs da timeline re-disparam syncSelection
+  // sem mudança real — não vale re-medir).
+  let estTimer = null;
+  let estSeq = 0;
+  let ultimaChaveEst = "";
+
+  // Texto do alerta persistente de contexto cheio (barra vermelha no rodapé).
+  const ALERTA_CTX_CHEIO =
+    "O contexto da IA encheu: a conversa e as peças ocupam quase todo o limite do modelo. " +
+    "Novas mensagens não serão aceitas — desmarque peças na lista para liberar espaço " +
+    "(elas saem do contexto na hora) ou comece uma nova conversa.";
 
   const panel = PjePanel.mount();
 
@@ -134,7 +147,11 @@
     conversation = [];
     pecasNaConversa.clear();
     buscaNaConversa = false;
+    clearTimeout(estTimer);
+    estSeq++; // descarta estimativas em voo
+    ultimaChaveEst = ""; // próxima seleção re-mede do zero
     panel.setContexto(null);
+    panel.setAlerta(null);
     panel.clearMessages();
     refreshKey(); // re-renderiza CTA de chave se necessário
   });
@@ -228,15 +245,22 @@
     await Promise.all([w(), w()]);
   }
 
-  // Bloqueia envios acima do limite de páginas de PDF por request do modelo
-  // (600 nos modelos de 1M de contexto; 100 no Haiku). Retorna o total.
-  function guardaPaginas(ids) {
-    if (!modelCaps) return 0;
+  // Soma as páginas de PDF das peças informadas (sem lançar erro).
+  function paginasDe(ids) {
     let total = 0;
     for (const id of ids) {
       const d = docsCache.get(id);
       if (d && d.kind === "pdf") total += d.pages || 1;
     }
+    return total;
+  }
+
+  // Bloqueia envios acima do limite de páginas de PDF por request do modelo
+  // (600 nos modelos de 1M de contexto; 100 no Haiku). Conta SÓ as peças
+  // ativas (selecionadas) — peça desmarcada sai do request e não conta mais.
+  function guardaPaginas(ids) {
+    if (!modelCaps) return 0;
+    const total = paginasDe(ids);
     if (total > modelCaps.maxPages) {
       const dica =
         modelCaps.maxPages <= 100
@@ -256,7 +280,7 @@
   // IMPORTANTE: recebe as MESMAS tools/betas do turno — depois de uma busca, o
   // histórico contém blocos de ferramenta e o count_tokens sem as tools
   // declaradas seria rejeitado (o medidor e a guarda de 90% morreriam mudos).
-  async function estimarContexto(messages, comPecasNovas, opts) {
+  async function estimarContexto(messages, opts) {
     let r = null;
     try {
       const payload = {
@@ -272,14 +296,16 @@
     if (!r || !r.tokens || !r.contextTokens) return null;
     const pct = Math.round((r.tokens / r.contextTokens) * 100);
     if (r.tokens > r.contextTokens * 0.9) {
-      // desmarcar peça não a remove do histórico — a saída certa depende da causa
-      throw new Error(
-        "a conversa ocupa ~" + pct + "% do contexto do modelo (" +
+      // desmarcar peça agora LIBERA contexto (o bloco sai do request) — a
+      // orientação principal é desmarcar; nova conversa é o recomeço total.
+      const err = new Error(
+        "a conversa ocupa ~" + pct + "% do contexto da IA (" +
           Math.round(r.tokens / 1000) + " mil tokens) — não sobra espaço para a análise. " +
-          (comPecasNovas
-            ? "Desmarque algumas das peças novas, ou clique em ⟲ (Nova conversa) e selecione só as peças desta análise."
-            : "Clique em ⟲ (Nova conversa) e selecione só as peças desta análise.")
+          "Desmarque peças na lista (elas saem do contexto na hora) ou clique em ⟲ (Nova conversa)."
       );
+      err.ctxCheio = true;
+      err.pct = pct;
+      throw err;
     }
     return { tokens: r.tokens, ctxTokens: r.contextTokens, pct };
   }
@@ -316,6 +342,9 @@
   // Monta os blocos das peças; marca o último com cache_control para que os
   // turnos seguintes reaproveitem o prefixo (economia de ~90% nos tokens).
   // O "title" nos blocos document permite ao modelo citar a peça pelo nome.
+  // Cada bloco carrega __pecaId (campo INTERNO, removido em prepararEnvio antes
+  // de qualquer request) — é o que permite desmarcar uma peça e liberá-la do
+  // contexto de verdade, filtrando o bloco no reenvio do histórico.
   function montarBlocos(ids) {
     const blocks = [];
     let totalB64 = 0;
@@ -329,6 +358,7 @@
             source: { type: "file", file_id: d.fileId },
             title: metaDe(id).titulo,
             citations: { enabled: true },
+            __pecaId: id,
           });
         } else {
           // fallback: base64 inline (upload indisponível)
@@ -338,6 +368,7 @@
             source: { type: "base64", media_type: "application/pdf", data: d.b64 },
             title: metaDe(id).titulo,
             citations: { enabled: true },
+            __pecaId: id,
           });
         }
       } else {
@@ -347,6 +378,7 @@
           source: { type: "text", media_type: "text/plain", data: d.text.slice(0, 60000) },
           title: metaDe(id).titulo,
           citations: { enabled: true },
+          __pecaId: id,
         });
       }
     }
@@ -358,6 +390,34 @@
     }
     if (blocks.length) blocks[blocks.length - 1].cache_control = { type: "ephemeral" };
     return blocks;
+  }
+
+  // Prepara o histórico para envio: a API é STATELESS (o histórico inteiro é
+  // remontado a cada request), então dá para filtrar os blocos document das
+  // peças desmarcadas — desmarcar libera contexto de verdade, sem esperar
+  // "Nova conversa". Regras:
+  //  - `ativos` (Set de ids) mantém só as peças marcadas; null mantém todas.
+  //  - o campo interno __pecaId NUNCA vai para a API (rejeitaria campo extra).
+  //  - blocos do assistant (thinking assinado, ferramentas) não são tocados —
+  //    só turnos de usuário carregam __pecaId.
+  // Custo aceito: mudar a seleção invalida o cache de prefixo daquele ponto em
+  // diante (mesma regra já aceita para o toggle de busca/troca de modelo).
+  function prepararEnvio(msgs, ativos) {
+    return msgs.map((t) => {
+      if (!Array.isArray(t.content)) return t;
+      const content = [];
+      for (const b of t.content) {
+        if (b && b.__pecaId != null) {
+          if (ativos && !ativos.has(b.__pecaId)) continue; // peça desmarcada: fora do request
+          const limpo = Object.assign({}, b);
+          delete limpo.__pecaId;
+          content.push(limpo);
+        } else {
+          content.push(b);
+        }
+      }
+      return { role: t.role, content };
+    });
   }
 
   // Abre um canal com o worker e resolve quando o turno termina.
@@ -451,6 +511,195 @@
     ].join(":");
   }
 
+  // Ferramentas/betas do turno atual: busca web quando o toggle está ligado —
+  // e, uma vez usada na conversa, nos turnos seguintes também (histórico com
+  // blocos de ferramenta exige as tools declaradas, inclusive no count_tokens).
+  function optsDoTurno() {
+    const opts = {};
+    if ((panel.isSearchOn() || buscaNaConversa) && modelCaps) {
+      opts.tools = toolsBusca();
+      opts.betas = BETAS_CHAT.concat(
+        modelCaps.webFetch === "web_fetch_20250910" ? ["web-fetch-2025-09-10"] : []
+      );
+    }
+    return opts;
+  }
+
+  // Baixa em silêncio (sem card de preparo) as peças que faltam no cache, com
+  // concorrência 3 (a mesma do envio). Usado pela estimativa dinâmica: o
+  // download de agora vira PREFETCH — o envio reaproveita o cache e fica mais
+  // rápido. Falha em uma peça não interrompe (ela só fica fora da estimativa;
+  // o envio tenta de novo com erro visível). onProgresso(feitas, total) deixa
+  // o usuário ver o andamento em seleções grandes.
+  async function baixarQuieto(ids, onProgresso) {
+    const fila = ids.filter((id) => !docsCache.has(id));
+    if (!fila.length) return;
+    const total = fila.length;
+    let feitas = 0;
+    async function w() {
+      while (fila.length) {
+        const id = fila.shift();
+        try {
+          docsCache.set(id, await PJE.baixar(id));
+        } catch (e) {
+          console.debug("[PJe IA] estimativa: peça", id, "não baixou:", e && e.message);
+        }
+        feitas++;
+        if (onProgresso) onProgresso(feitas, total);
+      }
+    }
+    await Promise.all([w(), w(), w()]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Medidor DINÂMICO de contexto em DUAS camadas — o clique não pode esperar
+  // download nem rede:
+  //  1) estimativa LOCAL instantânea (0 ms): heurística sobre o que já está em
+  //     cache — PDF ≈ páginas × 2000 tokens (texto+imagem), texto ≈ chars/3,5.
+  //     Atualiza a barrinha a cada clique e a cada peça baixada.
+  //  2) refinamento PRECISO em segundo plano (debounce): baixa o que falta
+  //     (prefetch p/ o envio), sobe PDFs à Files API (count e envio ficam
+  //     leves, por file_id) e corrige o número com count_tokens (gratuito).
+  // Alerta de contexto cheio só pela medição precisa (a local é aproximada).
+  // ---------------------------------------------------------------------------
+  const TOKENS_POR_PAGINA_PDF = 2000; // ordem de grandeza da API p/ PDF citável
+  const CHARS_POR_TOKEN = 3.5;
+  // Acima deste nº de peças AINDA NÃO baixadas, a medição em segundo plano não
+  // dispara downloads (ex.: "todas" marcadas — o PJe ativa peça a peça de forma
+  // serializada, levaria minutos). Fica a estimativa local parcial; a medição
+  // completa acontece no envio, com o card de progresso visível.
+  const LIMIAR_PREFETCH = 12;
+
+  function estimativaLocalTokens(ids) {
+    let t = 900; // system prompt + instruções fixas
+    for (const id of ids) {
+      const d = docsCache.get(id);
+      if (!d) continue; // ainda não baixada: entra quando o download chegar
+      t +=
+        d.kind === "pdf"
+          ? (d.pages || 1) * TOKENS_POR_PAGINA_PDF
+          : Math.ceil(Math.min(d.text.length, 60000) / CHARS_POR_TOKEN);
+    }
+    for (const turn of conversation) {
+      if (typeof turn.content === "string") {
+        t += Math.ceil(turn.content.length / CHARS_POR_TOKEN);
+        continue;
+      }
+      for (const b of turn.content) {
+        if (!b) continue;
+        // blocos de peça: já contados acima (marcadas) ou fora do request
+        if (b.__pecaId != null || b.type === "document") continue;
+        if (b.type === "text") t += Math.ceil((b.text || "").length / CHARS_POR_TOKEN);
+        else t += Math.ceil(JSON.stringify(b).length / 4); // thinking/ferramentas
+      }
+    }
+    return t;
+  }
+
+  function mostrarEstimativaLocal(ids) {
+    if (!modelCaps) return;
+    panel.setContexto({
+      tokens: estimativaLocalTokens(ids),
+      ctxTokens: modelCaps.contextTokens,
+      paginas: paginasDe(ids),
+      maxPaginas: modelCaps.maxPages,
+      pecas: ids.length,
+      // peças ainda sem download não têm medida — o gauge avisa em vez de
+      // fingir precisão
+      pendentes: ids.filter((id) => !docsCache.has(id)).length,
+    });
+  }
+
+  panel.onSelectionChange((ids) => {
+    clearTimeout(estTimer);
+    if (!ids.length && !conversation.length) {
+      estSeq++; // cancela estimativas em voo
+      panel.setContexto(null); // nada selecionado e nada conversado: sem medidor
+      return;
+    }
+
+    // Camada 1: resposta IMEDIATA ao clique, com o que já se sabe localmente.
+    if (modelCaps) mostrarEstimativaLocal(ids);
+    else garantirCaps().then(() => !busy && mostrarEstimativaLocal(ids));
+
+    // Camada 2: refinamento em segundo plano (downloads + uploads + count).
+    estTimer = setTimeout(async () => {
+      if (busy) return;
+      // mesma seleção e mesma conversa da última medição precisa: pula
+      const chave = ids.slice().sort().join(",") + "|" + conversation.length;
+      if (chave === ultimaChaveEst) return;
+      const seq = ++estSeq;
+      try {
+        await garantirCaps();
+        const faltam = ids.filter((id) => !docsCache.has(id));
+        if (faltam.length > LIMIAR_PREFETCH) {
+          // seleção grande (ex.: "todas" marcadas): não dispara a tempestade
+          // de downloads — estimativa parcial honesta, medição exata no envio
+          mostrarEstimativaLocal(ids);
+          panel.setStatus(
+            "Estimativa parcial: " + faltam.length +
+              " peça(s) ainda não baixadas — a medição completa acontece no envio."
+          );
+          return;
+        }
+        // baixa o que falta; a barrinha sobe a cada peça que chega
+        await baixarQuieto(ids, (feitas, total) => {
+          if (seq !== estSeq || busy) return;
+          panel.setStatus("Medindo o contexto… baixando peças (" + feitas + "/" + total + ")", true);
+          mostrarEstimativaLocal(ids);
+        });
+        if (seq !== estSeq || busy) return;
+        // sobe os PDFs à Files API JÁ na medição: o count_tokens referencia
+        // por file_id (payload mínimo) e o envio reaproveita o upload
+        await subirPecas(ids);
+        if (seq !== estSeq || busy) return;
+        panel.setStatus("Calculando o tamanho exato do contexto…", true);
+
+        // request PROSPECTIVO: histórico filtrado + um turno de rascunho com
+        // as peças novas (as que ainda não têm blocos no histórico)
+        const ativos = new Set(ids);
+        const novas = ids.filter((id) => !pecasNaConversa.has(id) && docsCache.has(id));
+        const rascunho = [...conversation];
+        if (novas.length) {
+          rascunho.push({
+            role: "user",
+            content: [...montarBlocos(novas), { type: "text", text: "…" }],
+          });
+        }
+        const msgs = prepararEnvio(rascunho, ativos);
+        if (!msgs.length) {
+          panel.setStatus("");
+          panel.setContexto(null);
+          return;
+        }
+
+        const est = await estimarContexto(msgs, optsDoTurno());
+        if (seq !== estSeq || busy) return;
+        panel.setStatus("");
+        if (est) {
+          ultimaChaveEst = chave; // só memoriza medição que deu certo
+          panel.setAlerta(null); // coube: alerta anterior se resolve sozinho
+          panel.setContexto({
+            tokens: est.tokens,
+            ctxTokens: est.ctxTokens,
+            paginas: paginasDe(ids),
+            maxPaginas: modelCaps ? modelCaps.maxPages : 0,
+            pecas: ids.length,
+          });
+        }
+      } catch (e) {
+        if (seq !== estSeq || busy) return;
+        panel.setStatus("");
+        if (e && e.ctxCheio) {
+          ultimaChaveEst = ""; // com alerta ligado, a próxima mudança SEMPRE re-mede
+          panel.setAlerta(ALERTA_CTX_CHEIO);
+        } else {
+          console.debug("[PJe IA] estimativa dinâmica falhou:", e && e.message);
+        }
+      }
+    }, 900);
+  });
+
   panel.onSend(async (text, selectedIds) => {
     if (busy) return;
     if (selectedIds.length === 0) {
@@ -458,6 +707,8 @@
       return;
     }
     busy = true;
+    clearTimeout(estTimer);
+    estSeq++; // o envio faz a estimativa oficial — mata estimativas em voo
 
     // Anexo INCREMENTAL: só as peças que ainda não estão no histórico entram
     // neste turno. As já enviadas continuam valendo (fazem parte do prefixo
@@ -483,46 +734,42 @@
       let paginas = 0;
       if (attach) {
         await baixarSelecionadas(novas);
-        // a guarda conta TUDO que vai no request: histórico + peças novas
-        paginas = guardaPaginas([...pecasNaConversa, ...novas]);
+        // a guarda conta o que VAI no request: só as peças ativas (marcadas)
+        paginas = guardaPaginas(selectedIds);
         await subirPecas(novas);
         stripOldCacheControl();
         userContent = [...montarBlocos(novas), { type: "text", text }];
       } else {
-        paginas = guardaPaginas([...pecasNaConversa]);
+        paginas = guardaPaginas(selectedIds);
         userContent = text;
       }
 
-      // Busca de jurisprudência: ferramentas web entram com o toggle ligado —
-      // e, uma vez usadas na conversa, seguem declaradas nos turnos seguintes
-      // (o histórico contém blocos de ferramenta; removê-las invalidaria o
-      // cache de prefixo e arriscaria rejeição do histórico). Nunca combinamos
-      // ferramentas web com code_execution no mesmo request (as versões
-      // _20260209 já embutem execução para filtragem dinâmica).
-      const opts = {};
-      if ((panel.isSearchOn() || buscaNaConversa) && modelCaps) {
-        opts.tools = toolsBusca();
-        opts.betas = BETAS_CHAT.concat(
-          modelCaps.webFetch === "web_fetch_20250910" ? ["web-fetch-2025-09-10"] : []
-        );
-      }
+      // Busca de jurisprudência (ver optsDoTurno). Nunca combinamos ferramentas
+      // web com code_execution no mesmo request (as versões _20260209 já
+      // embutem execução para filtragem dinâmica).
+      const opts = optsDoTurno();
+
+      // O request de fato: histórico + turno novo, SEM os blocos das peças
+      // desmarcadas (prepararEnvio filtra por __pecaId) e sem campos internos.
+      const ativos = new Set(selectedIds);
+      const msgsEnvio = prepararEnvio(
+        [...conversation, { role: "user", content: userContent }],
+        ativos
+      );
 
       panel.setStatus("Estimando o tamanho do contexto…", true);
-      const est = await estimarContexto(
-        [...conversation, { role: "user", content: userContent }],
-        attach,
-        opts
-      );
+      const est = await estimarContexto(msgsEnvio, opts);
       if (attach) panel.endPrep(); // confirma "peças anexadas" após validar limites
       let infoCtx = "";
       if (est) {
         infoCtx = " (~" + Math.round(est.tokens / 1000) + " mil tokens, " + est.pct + "% do contexto)";
+        panel.setAlerta(null); // coube: qualquer alerta anterior está resolvido
         panel.setContexto({
           tokens: est.tokens,
           ctxTokens: est.ctxTokens,
           paginas,
           maxPaginas: modelCaps ? modelCaps.maxPages : 0,
-          pecas: pecasNaConversa.size + novas.length,
+          pecas: selectedIds.length,
         });
       }
 
@@ -538,7 +785,7 @@
       let statusFerramenta = false; // há status de busca/ferramenta na tela
       const citeKeys = new Map();
       let thinkAcc = "";
-      const fim = await stream(conversation, {
+      const fim = await stream(msgsEnvio, {
         onDelta(delta) {
           // limpa o status inicial e também o de ferramenta (a busca acabou
           // quando o texto volta a fluir)
@@ -613,9 +860,12 @@
         let st = "";
         if (truncated)
           st = "A resposta atingiu o tamanho máximo — peça para continuar, se necessário.";
-        if (fim.stopReason === "model_context_window_exceeded")
-          st =
-            "A conversa atingiu o limite de contexto do modelo — clique em ⟲ (Nova conversa) e selecione só as peças desta análise.";
+        if (fim.stopReason === "model_context_window_exceeded") {
+          // o modelo estourou a janela no meio da resposta: alerta persistente
+          ultimaChaveEst = "";
+          panel.setAlerta(ALERTA_CTX_CHEIO);
+          st = "A resposta foi cortada: o limite de contexto do modelo foi atingido.";
+        }
         panel.setStatus(st);
       } else {
         // resposta vazia: não grava turno (evitaria content vazio no próximo request)
@@ -627,6 +877,12 @@
     } catch (e) {
       panel.endPrep(true); // remove o card de preparo, se ainda estiver na tela
       panel.setStatus("Erro: " + (e && e.message ? e.message : e));
+      // contexto cheio: além do erro no status, liga a barra de alerta
+      // persistente — o usuário precisa AGIR (desmarcar peças ou recomeçar)
+      if (e && e.ctxCheio) {
+        ultimaChaveEst = "";
+        panel.setAlerta(ALERTA_CTX_CHEIO);
+      }
       // remove a bolha vazia do assistente, se houver
       if (assistantEl && !acc) panel.removeMessage(assistantEl);
       // desfaz o turno do usuário para permitir nova tentativa
@@ -685,21 +941,26 @@
       );
       assistantEl = panel.addMessage("assistant", "");
 
-      const messages = [
-        {
-          role: "user",
-          content: [
-            ...blocos,
-            {
-              type: "text",
-              text:
-                instrucao +
-                " Gere o resultado como um arquivo Word (.docx) bem formatado " +
-                "(títulos, listas e tabelas), usando a skill docx.",
-            },
-          ],
-        },
-      ];
+      // prepararEnvio(…, null): mantém todas as peças, só remove o campo
+      // interno __pecaId (a API rejeita campos extras nos blocos).
+      const messages = prepararEnvio(
+        [
+          {
+            role: "user",
+            content: [
+              ...blocos,
+              {
+                type: "text",
+                text:
+                  instrucao +
+                  " Gere o resultado como um arquivo Word (.docx) bem formatado " +
+                  "(títulos, listas e tabelas), usando a skill docx.",
+              },
+            ],
+          },
+        ],
+        null
+      );
 
       await stream(
         messages,

@@ -94,11 +94,43 @@ Haiku) e `effort` (não suportado no Haiku).
   explicar isso e sugerir marcar os anexos.
 - **Anexo incremental de peças** (`pecasNaConversa`): cada peça entra no histórico UMA
   única vez; a cada turno só o DELTA (peças ainda não enviadas) é anexado. Reanexar
-  tudo a cada mudança de seleção duplicava páginas/tokens no request (o histórico é
-  imutável) e estourava os limites já no segundo envio. Peça desmarcada permanece no
-  histórico até "Nova conversa" (⟲) — as mensagens de erro orientam isso. As guardas
-  de páginas/tokens contam o request INTEIRO (histórico + novas); o medidor de contexto
-  (`panel.setContexto`) mostra tokens e páginas acumulados vs. limites do modelo.
+  tudo a cada mudança de seleção duplicava páginas/tokens no request (os blocos já
+  enviados fazem parte do prefixo cacheado) e estourava os limites já no segundo envio.
+- **Desmarcar peça LIBERA contexto** (`prepararEnvio` em content.js): a API é
+  stateless — o histórico inteiro é remontado a cada request —, então cada bloco
+  `document` carrega o campo interno `__pecaId` e, no envio, `prepararEnvio(msgs,
+  ativos)` filtra os blocos das peças desmarcadas e remove `__pecaId` (a API rejeita
+  campos extras; o teste do scratchpad confirma que ele nunca vaza). Blocos do
+  assistant (thinking assinado, ferramentas) NUNCA são tocados. `conversation` guarda
+  o turno CRU (com `__pecaId`); re-marcar a peça faz os blocos voltarem sem reanexar
+  (ela segue em `pecasNaConversa`). Custo aceito: mudar a seleção invalida o cache de
+  prefixo daquele ponto em diante. As guardas de páginas/tokens contam o request que
+  VAI de fato (só peças ativas + histórico filtrado).
+- **Feedback de contexto em três camadas** (o usuário precisa saber quando encheu):
+  (1) medidor `panel.setContexto` (tokens/páginas vs. limites), atualizado no envio e
+  DINAMICAMENTE ao marcar/desmarcar peças — inclusive ANTES do primeiro envio, em
+  DUAS sub-camadas, porque o clique não pode esperar download nem rede:
+  (1a) estimativa LOCAL instantânea (0 ms, `estimativaLocalTokens`): PDF ≈ páginas ×
+  2000 tokens, texto ≈ chars/3,5 sobre o que já está em `docsCache` (o tipo vem do
+  content-type detectado em `pje.js`); peças ainda sem download aparecem como
+  "N peça(s) sem medir" (`pendentes` no gauge) — nunca fingir precisão;
+  (1b) refinamento em segundo plano (debounce 900 ms): `baixarQuieto` (concorrência
+  3, progresso peça a peça re-alimentando a estimativa local) → `subirPecas`
+  (upload à Files API já na medição: count_tokens referencia por file_id, payload
+  mínimo, e o envio reaproveia — prefetch completo) → count_tokens corrige o número.
+  GUARDA de escala: acima de `LIMIAR_PREFETCH` (12) peças sem cache (ex.: "todas"
+  marcadas), o refinamento NÃO dispara downloads — a ativação JSF do PJe é
+  serializada e levaria minutos; fica a estimativa parcial e a medição completa
+  acontece no envio. `estSeq` descarta respostas atrasadas e `ultimaChaveEst`
+  (ids ordenados + tamanho da conversa) evita re-medir nos refreshs da timeline —
+  a chave é limpa sempre que o alerta liga, para a próxima mudança re-medir;
+  (2) bloqueio a >90% da janela em `estimarContexto` (erro com flag `ctxCheio`);
+  (3) barra de alerta persistente `panel.setAlerta` (`.alertbar`, `role="alert"`, com
+  botão ⟲) ligada quando o envio é bloqueado ou em `model_context_window_exceeded` —
+  diferente do `.status` (transitório), só some quando a conversa volta a caber
+  (desmarcar peças re-estima e limpa sozinha) ou em "Nova conversa". Compaction
+  server-side foi avaliada e descartada: resumiria as próprias peças, matando as
+  citações por página — a saída certa aqui é tirar/incluir peças do request.
 - **Prompt caching**: `montarBlocos()` marca o último bloco com
   `cache_control: {type: "ephemeral"}` e `stripOldCacheControl()` remove breakpoints
   antigos do histórico (a API aceita no máx. 4).
@@ -120,6 +152,20 @@ Haiku) e `effort` (não suportado no Haiku).
   conteúdo dos autos).
 - **Blocos `document` levam `title`** (título da peça) para o modelo citar as peças pelo
   nome — exigência do system prompt.
+
+## Busca de peças e orientações (panel.js)
+
+- **Busca na lista de peças** (`.docsearch`/`filtrarDocs`): filtra por título sem
+  acentos (`row.dataset.busca = norm(titulo)`), só esconde/mostra linhas (`row.hidden`
+  — depende da regra global `[hidden]{display:none !important}` do panel.css); os
+  checkboxes seguem sendo a fonte de verdade (peça marcada e filtrada continua
+  marcada). "todas" respeita o filtro ativo (marca/desmarca só as visíveis). Esc
+  limpa; `setDocs` re-aplica o filtro após re-renderizar a lista.
+- **Orientações no estado vazio** (`showEmptyHint`): box `.guia` explica que NÃO é
+  um agente autônomo (seleciona peças → envia solicitação), o limite de contexto
+  (~1M tokens no modelo padrão, medidor no rodapé) e cita o TecJustiça MCP do
+  PJe-CE (https://pjece.tecjustica.com/) como alternativa para autos volumosos com
+  gerenciamento automático de contexto. Manter o link ao editar o hint.
 
 ## Popup de menção `@` (panel.js)
 

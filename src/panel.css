@@ -1,6 +1,10 @@
 /* Painel de chat — escopado no Shadow DOM. Identidade institucional. */
 :host { all: initial; }
 * { box-sizing: border-box; }
+/* O atributo hidden do HTML perde para qualquer display definido por regra de
+   autor (.gauge/.ctxbar/.alertbar usam display:flex) — sem isto, os elementos
+   "escondidos" ficam visíveis como faixas vazias. Vale para todo o painel. */
+[hidden] { display: none !important; }
 
 .wrap {
   --ink: #14243d;
@@ -159,6 +163,18 @@
 }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .l-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+/* ---------- Busca de peças ---------- */
+.docsearch { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+.doc-q {
+  flex: 1; min-width: 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 9px; font-size: 12.5px; font-family: inherit;
+  background: var(--paper); color: var(--text); outline: none;
+}
+.doc-q:focus { border-color: var(--gold); background: #fff; }
+.doc-q::placeholder { color: #a9a08c; }
+.doc-q-n { flex: none; font-size: 10.5px; color: var(--muted); }
 
 .doclist { overflow-y: auto; font-size: 12.8px; }
 .docrow {
@@ -334,9 +350,20 @@
 
 .hint-empty {
   margin: auto; text-align: center; color: var(--muted);
-  max-width: 320px; font-size: 13.5px; line-height: 1.6;
+  max-width: 420px; font-size: 13.5px; line-height: 1.6;
 }
 .hint-empty .big { font-family: Georgia, serif; font-size: 17px; color: var(--ink); display: block; margin-bottom: 6px; }
+/* Box de orientações: como funciona, limite de contexto e alternativa MCP */
+.hint-empty .guia {
+  margin-top: 14px; text-align: left;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  padding: 11px 13px; font-size: 12px; line-height: 1.55; color: var(--muted);
+}
+.hint-empty .guia p { margin: 0 0 9px; }
+.hint-empty .guia p:last-child { margin-bottom: 0; }
+.hint-empty .guia b { color: var(--text); }
+.hint-empty .guia a { color: var(--gold-2); font-weight: 700; text-decoration: underline; }
+.hint-empty .guia a:hover { color: var(--ink); }
 
 /* Estado sem chave */
 .needkey {
@@ -365,8 +392,25 @@
 }
 .status:empty { display: none; }
 
+/* ---------- Alerta persistente: contexto da IA cheio ---------- */
+.alertbar {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12.5px; font-weight: 600; color: #7c3212;
+  background: #fbeee6; border: 1px solid #e0b7a0;
+  border-left: 4px solid #b4552d;
+  border-radius: 0 8px 8px 0; padding: 8px 10px; margin-bottom: 7px;
+}
+.alertbar .alert-t { flex: 1; min-width: 0; line-height: 1.4; }
+.alertbar .alert-reset {
+  flex: none; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid #b4552d; background: #fff; color: #b4552d;
+  border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 700;
+  cursor: pointer;
+}
+.alertbar .alert-reset:hover { background: #b4552d; color: #fff; }
+
 /* ----- Faixas rotuladas ----- */
-.ctxbar, .quick, .toolbar {
+.ctxbar, .toolbar {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 6px 0; margin: 0;
   border-top: 1px dashed var(--line);
@@ -377,7 +421,7 @@
   font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em;
   text-transform: uppercase; color: #a08c66;
 }
-.chips, .quick-list, .tools {
+.chips, .tools {
   flex: 1; min-width: 0;
   display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
 }
@@ -512,7 +556,7 @@
 @keyframes pje-ia-girar { to { transform: rotate(360deg); } }
 
 /* botões travados durante uma resposta */
-.toolbar button:disabled, .quick-btn:disabled { opacity: 0.45; cursor: default; }
+.toolbar button:disabled { opacity: 0.45; cursor: default; }
 
 /* ---------- Medidor de contexto da conversa ---------- */
 .gauge { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; cursor: help; }
@@ -574,14 +618,6 @@
 .docxbar-x:hover { background: #f0e7d2; color: var(--text); }
 /* o botão Enviar vira "📄 Gerar" — halo dourado para marcar a mudança */
 .send.docx { box-shadow: 0 0 0 3px rgba(196, 158, 96, 0.3); }
-
-/* ---------- Ações rápidas ---------- */
-.quick-btn {
-  border: 1px dashed var(--line); background: transparent; color: var(--muted);
-  border-radius: 999px; padding: 2px 10px; font-size: 11px; cursor: pointer;
-  transition: all 0.15s;
-}
-.quick-btn:hover { border-color: var(--gold); color: var(--text); background: #fff; }
 
 /* ---------- Raciocínio (thinking) colapsável ---------- */
 .msg .think {

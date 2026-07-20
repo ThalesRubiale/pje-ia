@@ -157,39 +157,21 @@ var PjePanel = (function () {
     return html;
   }
 
-  // Ações rápidas: preenchem o campo de texto com um prompt pronto (o usuário
-  // revisa e envia). Só UI — nenhum request é disparado automaticamente.
-  const ACOES_RAPIDAS = [
-    {
-      rot: "Resumo do processo",
-      p: "Faça um resumo objetivo do processo: partes, objeto, pedidos, andamento e situação atual.",
-    },
-    {
-      rot: "Linha do tempo",
-      p: "Monte uma linha do tempo dos atos processuais em tabela: data, ato e peça de origem.",
-    },
-    {
-      rot: "Preparar audiência",
-      p: "Prepare um roteiro para a audiência: pontos controvertidos, provas de cada parte, sugestões de perguntas e riscos.",
-    },
-    {
-      rot: "Minuta de despacho",
-      p: "Redija uma minuta de despacho/decisão adequada à fase atual do processo, fundamentando nas peças.",
-    },
-  ];
-
-  // Ícones SVG (evita depender de glifos unicode que podem faltar na fonte)
+  // Ícones SVG (evita depender de glifos unicode que podem faltar na fonte).
+  // Cada ação do cabeçalho tem um desenho DISTINTO: baixar (seta na bandeja),
+  // nova conversa (balão com +), expandir (seta horizontal dupla), tela cheia
+  // (setas diagonais para os cantos) e fechar (X).
   const SVG = {
     fs:
-      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/></svg>',
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"/></svg>',
     expand:
-      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4"/></svg>',
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M5 5.5L2.5 8 5 10.5M11 5.5L13.5 8 11 10.5"/></svg>',
     close:
-      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>',
+      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
     reset:
-      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 1 1 1.6 3.9M2.5 12V8.8h3.2"/></svg>',
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7.6c0 2.7-2.7 4.9-6 4.9-.8 0-1.6-.1-2.3-.4L2.6 13l1-2.3C2.6 9.8 2 8.8 2 7.6c0-2.7 2.7-4.9 6-4.9s6 2.2 6 4.9z"/><path d="M8 5.7v3.8M6.1 7.6h3.8"/></svg>',
     download:
-      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.8 7l3.2 3.2L11.2 7M3 13h10"/></svg>',
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v7M5 6.7l3 3 3-3M3 13h10"/></svg>',
     copy:
       '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg>',
     doc:
@@ -260,11 +242,11 @@ var PjePanel = (function () {
         <div class="hd">
           <img class="mark" src="${iconUrl}" alt="">
           <span class="ttl">Assistente dos Autos</span>
-          <button class="dl" title="Baixar conversa (.md)">${SVG.download}</button>
-          <button class="reset" title="Nova conversa">${SVG.reset}</button>
-          <button class="expand" title="Expandir / recolher">${SVG.expand}</button>
-          <button class="fs" title="Tela cheia / restaurar">${SVG.fs}</button>
-          <button class="close" title="Fechar">${SVG.close}</button>
+          <button class="dl" title="Baixar a conversa em arquivo (.md)" aria-label="Baixar a conversa em arquivo">${SVG.download}</button>
+          <button class="reset" title="Nova conversa (zera o chat e o contexto)" aria-label="Nova conversa">${SVG.reset}</button>
+          <button class="expand" title="Painel largo (mostra as peças na lateral)" aria-label="Painel largo">${SVG.expand}</button>
+          <button class="fs" title="Tela cheia" aria-label="Tela cheia">${SVG.fs}</button>
+          <button class="close" title="Fechar o painel" aria-label="Fechar o painel">${SVG.close}</button>
         </div>
         <div class="content">
           <div class="docs">
@@ -277,6 +259,10 @@ var PjePanel = (function () {
               <span><i class="l-dot cat-audiencia"></i>audiências</span>
               <span><i class="l-dot cat-peticao"></i>petições</span>
               <span><i class="l-dot cat-prova"></i>provas</span>
+            </div>
+            <div class="docsearch">
+              <input type="search" class="doc-q" placeholder="Buscar peça… (ex.: contestação)" aria-label="Buscar peça pelo nome">
+              <span class="doc-q-n" hidden></span>
             </div>
             <div class="doclist"></div>
             <div class="docs-tip">Não achou uma peça? Role a linha do tempo do processo para carregá-la.</div>
@@ -292,12 +278,12 @@ var PjePanel = (function () {
                 <div class="mention-list" role="listbox"></div>
               </div>
               <div class="status" aria-live="polite"></div>
-              <div class="gauge" hidden title="Quanto do limite do modelo esta conversa já ocupa (tokens e páginas de PDF). Ao encher, clique em ⟲ para começar uma nova conversa.">
+              <div class="alertbar" role="alert" hidden></div>
+              <div class="gauge" hidden title="Quanto do limite do modelo esta conversa já ocupa (tokens e páginas de PDF). Ao encher, desmarque peças (libera espaço na hora) ou clique em ⟲ para começar uma nova conversa.">
                 <div class="gauge-bar"><div class="gauge-fill"></div></div>
                 <span class="gauge-txt"></span>
               </div>
               <div class="ctxbar" hidden></div>
-              <div class="quick"></div>
               <div class="toolbar">
                 <span class="ctxlab">Ferramentas</span>
                 <div class="tools">
@@ -330,12 +316,15 @@ var PjePanel = (function () {
     const doclist = $(".doclist");
     const chkAll = $(".chk-all");
     const countEl = $(".count");
+    const docQ = $(".doc-q");
+    const docQN = $(".doc-q-n");
     const msgs = $(".msgs");
     const ft = $(".ft");
     const statusEl = $(".status");
     const gaugeEl = $(".gauge");
     const gaugeFill = $(".gauge-fill");
     const gaugeTxt = $(".gauge-txt");
+    const alertEl = $(".alertbar");
     const ctxbar = $(".ctxbar");
     const mentionEl = $(".mention");
     const mentionList = $(".mention-list");
@@ -350,7 +339,23 @@ var PjePanel = (function () {
       hintEl = document.createElement("div");
       hintEl.className = "hint-empty";
       hintEl.innerHTML =
-        '<span class="big">Como posso ajudar?</span>Marque as peças acima ou digite <b>@</b> no campo abaixo para escolhê-las — ex.: <em>"Resuma a inicial e a réplica"</em>.';
+        '<span class="big">Como posso ajudar?</span>' +
+        'Marque as peças na lista (use a <b>busca</b>) ou digite <b>@</b> no campo abaixo — ' +
+        'ex.: <em>"Resuma a inicial e a réplica"</em>.' +
+        '<div class="guia">' +
+        "<p><b>Como funciona:</b> este assistente <b>não é um agente autônomo</b> " +
+        "(como o Claude Code) — ele não navega no processo sozinho. Você seleciona " +
+        "as peças, envia a solicitação, e a resposta usa somente os documentos marcados. " +
+        "Entre uma pergunta e outra, dá para marcar e desmarcar peças à vontade.</p>" +
+        "<p><b>Contexto limitado:</b> a conversa inteira (peças + perguntas + respostas) " +
+        "precisa caber na janela do modelo — até <b>1 milhão de tokens</b> no modelo padrão. " +
+        "O medidor acima do campo mostra o quanto já foi usado. Processos volumosos podem " +
+        "não caber: analise por partes, desmarcando peças para liberar espaço.</p>" +
+        '<p>💡 Para autos muito grandes, conheça o <a href="https://pjece.tecjustica.com/" ' +
+        'target="_blank" rel="noopener">PJe-CE · TecJustiça MCP</a> — demonstração com o ' +
+        "PJe do Ceará em que o contexto é gerenciado automaticamente pelo código (via MCP): " +
+        "a análise de processos grandes fica bem mais tranquila.</p>" +
+        "</div>";
       msgs.appendChild(hintEl);
     }
     function clearEmptyHint() {
@@ -446,28 +451,6 @@ var PjePanel = (function () {
       .querySelector(".docxbar-x")
       .addEventListener("click", () => setDocxMode(false));
 
-    // Ações rápidas: preenchem o campo com um prompt pronto para revisão
-    const quickEl = $(".quick");
-    const quickLab = document.createElement("span");
-    quickLab.className = "ctxlab";
-    quickLab.textContent = "Perguntas prontas";
-    quickEl.appendChild(quickLab);
-    const quickList = document.createElement("div");
-    quickList.className = "quick-list";
-    quickEl.appendChild(quickList);
-    for (const a of ACOES_RAPIDAS) {
-      const b = document.createElement("button");
-      b.className = "quick-btn";
-      b.textContent = a.rot;
-      b.title = a.p;
-      b.addEventListener("click", () => {
-        inEl.value = a.p;
-        autoresize();
-        inEl.focus();
-      });
-      quickList.appendChild(b);
-    }
-
     // -------------------------------------------------------------------------
     // Transcript da conversa (para exportar .md e copiar por mensagem).
     // Os placeholders de citação viram [n] no texto exportado.
@@ -550,6 +533,7 @@ var PjePanel = (function () {
     }
 
     let prevChipIds = new Set(); // anima só chips recém-adicionados
+    let selChangeCb = null; // content script re-estima o contexto ao mudar a seleção
     function syncSelection() {
       const sel = getSelectedDocs();
       const total = allDocs.length;
@@ -560,6 +544,8 @@ var PjePanel = (function () {
           ? `(${sel.length}/${total} no contexto)`
           : `(${total})`
         : "";
+
+      if (selChangeCb) selChangeCb(sel.map((d) => d.id));
 
       // chips da barra de contexto
       ctxbar.innerHTML = "";
@@ -596,14 +582,50 @@ var PjePanel = (function () {
       prevChipIds = new Set(sel.map((d) => d.id));
     }
 
+    // "todas" respeita a busca: com filtro ativo, marca/desmarca só as peças
+    // visíveis (ex.: buscar "contestação" + todas = marca as contestações).
     chkAll.addEventListener("change", () => {
-      doclist
-        .querySelectorAll('input[type="checkbox"]')
-        .forEach((c) => (c.checked = chkAll.checked));
+      const filtrando = !!norm(docQ.value.trim());
+      doclist.querySelectorAll('input[type="checkbox"]').forEach((c) => {
+        const row = c.closest(".docrow");
+        if (!filtrando || (row && !row.hidden)) c.checked = chkAll.checked;
+      });
       syncSelection();
     });
     // eventos change dos checkboxes individuais borbulham até a lista
     doclist.addEventListener("change", syncSelection);
+
+    // -------------------------------------------------------------------------
+    // Busca de peças: filtra a lista pelo título (sem acentos, via norm()).
+    // Só esconde/mostra linhas — os checkboxes continuam sendo a fonte de
+    // verdade da seleção (peça marcada e filtrada segue marcada).
+    // -------------------------------------------------------------------------
+    function filtrarDocs() {
+      const q = norm(docQ.value.trim());
+      let visiveis = 0;
+      for (const row of doclist.querySelectorAll(".docrow")) {
+        const hit = !q || (row.dataset.busca || "").includes(q);
+        row.hidden = !hit;
+        if (hit) visiveis++;
+      }
+      const aviso = doclist.querySelector(".doc-noresult");
+      if (aviso) aviso.remove();
+      if (q && !visiveis && allDocs.length) {
+        const d = document.createElement("div");
+        d.className = "empty doc-noresult";
+        d.textContent = "Nenhuma peça com esse nome.";
+        doclist.appendChild(d);
+      }
+      docQN.hidden = !q;
+      docQN.textContent = q ? visiveis + "/" + allDocs.length : "";
+    }
+    docQ.addEventListener("input", filtrarDocs);
+    docQ.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        docQ.value = "";
+        filtrarDocs();
+      }
+    });
 
     // -------------------------------------------------------------------------
     // Menção @: digitar "@" abre um popup com as peças; selecionar marca a peça
@@ -890,6 +912,10 @@ var PjePanel = (function () {
       onReset(cb) {
         resetCb = cb;
       },
+      // Notifica quando o usuário marca/desmarca peças (ids selecionados).
+      onSelectionChange(cb) {
+        selChangeCb = cb;
+      },
       setConfigured,
       clearMessages() {
         msgs.innerHTML = "";
@@ -899,6 +925,8 @@ var PjePanel = (function () {
         transcript.length = 0;
         setDocxMode(false); // nova conversa desliga o modo documento
         statusEl.textContent = "";
+        alertEl.hidden = true;
+        alertEl.innerHTML = "";
         showEmptyHint();
       },
       setDocs(docs) {
@@ -909,6 +937,7 @@ var PjePanel = (function () {
           const p = partesTitulo(d.titulo);
           const row = document.createElement("label");
           row.className = "docrow " + categoriaDe(d.titulo);
+          row.dataset.busca = norm(d.titulo); // índice da busca (sem acentos)
           row.innerHTML =
             `<input type="checkbox" value="${escapeHtml(d.id)}">` +
             '<span class="d-dot" aria-hidden="true"></span>' +
@@ -922,6 +951,7 @@ var PjePanel = (function () {
         if (!docs.length) {
           doclist.innerHTML = '<div class="empty">Nenhuma peça encontrada nesta tela.</div>';
         }
+        filtrarDocs(); // re-aplica a busca ativa à lista recém-renderizada
         syncSelection();
         if (mention) updateMention(); // popup aberto: reflete a lista atualizada
       },
@@ -1050,8 +1080,27 @@ var PjePanel = (function () {
           Math.round(pctTok * 100) + "%)" +
           (info.maxPaginas
             ? " • " + (info.paginas || 0) + "/" + info.maxPaginas + " págs. de PDF"
-            : "");
+            : "") +
+          (info.pendentes ? " • " + info.pendentes + " peça(s) sem medir" : "");
         gaugeEl.hidden = false;
+      },
+      // Barra de ALERTA persistente (contexto cheio): diferente do status
+      // (transitório), fica visível até ser resolvida — com ação de recomeço.
+      // null/"" esconde.
+      setAlerta(msg) {
+        if (!msg) {
+          alertEl.hidden = true;
+          alertEl.innerHTML = "";
+          return;
+        }
+        alertEl.innerHTML =
+          '<span class="alert-t">⚠️ ' + escapeHtml(msg) + "</span>" +
+          '<button class="alert-reset" title="Começar uma nova conversa do zero">' +
+          SVG.reset + " Nova conversa</button>";
+        alertEl
+          .querySelector(".alert-reset")
+          .addEventListener("click", () => resetCb && resetCb());
+        alertEl.hidden = false;
       },
       lockInput(b) {
         inEl.disabled = b;
@@ -1060,7 +1109,6 @@ var PjePanel = (function () {
         // e botão ativo-porém-morto confunde
         tglSearch.disabled = b;
         btnDocx.disabled = b;
-        for (const q of quickEl.querySelectorAll("button")) q.disabled = b;
       },
     };
   }
