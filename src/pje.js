@@ -56,7 +56,8 @@ var PJE = (function () {
   }
 
   // Baixa uma peça pelo id. Endpoint REST autenticado por cookie de sessão.
-  // Retorna {kind:"pdf", b64, size} ou {kind:"text", text} conforme o content-type.
+  // Retorna {kind:"pdf", b64, size} ou {kind:"text", text} — ver lerCorpo
+  // (content-type + assinatura %PDF- no binário).
   // Corpo vazio com HTTP 200 é tratado como "peça não liberada na sessão":
   // ativa a peça na timeline e tenta uma segunda vez antes de desistir.
   async function baixar(id) {
@@ -147,10 +148,20 @@ var PJE = (function () {
 
   // Interpreta o corpo da resposta. Devolve null quando veio vazio
   // (PDF de 0 bytes ou texto em branco após a extração).
+  // Detecção de PDF em DUAS camadas: content-type E assinatura %PDF- no início
+  // do binário — o PJe pode servir PDF como application/octet-stream (ou sem
+  // content-type), e sem o sniff a peça cairia no ramo de texto virando lixo
+  // UTF-8 no contexto (até ~17 mil tokens desperdiçados por peça).
   async function lerCorpo(r, id) {
     const ct = (r.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("pdf")) {
-      const blob = await r.blob();
+    const blob = await r.blob();
+    let ehPdf = ct.includes("pdf");
+    if (!ehPdf && !ct.includes("html") && blob.size >= 5) {
+      // a spec permite lixo antes do %PDF- — procura nos primeiros 1024 bytes
+      const head = new Uint8Array(await blob.slice(0, 1024).arrayBuffer());
+      ehPdf = String.fromCharCode(...head).includes("%PDF-");
+    }
+    if (ehPdf) {
       if (!blob.size) {
         console.debug("[PJe IA] peça", id, "PDF de 0 bytes");
         return null;
@@ -160,7 +171,19 @@ var PJE = (function () {
       const b64 = await blobToB64(blob);
       return { kind: "pdf", b64, size: blob.size, pages };
     }
-    const raw = await r.text();
+    // blob.text() decodifica sempre UTF-8; honra o charset do header quando
+    // outro (PJe legado pode servir HTML em ISO-8859-1 — acentuação).
+    let raw;
+    const charset = (ct.match(/charset=([\w-]+)/) || [])[1];
+    if (charset && !/^utf-?8$/i.test(charset)) {
+      try {
+        raw = new TextDecoder(charset).decode(await blob.arrayBuffer());
+      } catch {
+        raw = await blob.text();
+      }
+    } else {
+      raw = await blob.text();
+    }
     // Peças HTML: extrai só o texto legível (sem tags/scripts) para o modelo.
     let text = raw;
     if (ct.includes("html")) {

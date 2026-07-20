@@ -111,8 +111,11 @@ Haiku) e `effort` (não suportado no Haiku).
   DINAMICAMENTE ao marcar/desmarcar peças — inclusive ANTES do primeiro envio, em
   DUAS sub-camadas, porque o clique não pode esperar download nem rede:
   (1a) estimativa LOCAL instantânea (0 ms, `estimativaLocalTokens`): PDF ≈ páginas ×
-  2000 tokens, texto ≈ chars/3,5 sobre o que já está em `docsCache` (o tipo vem do
-  content-type detectado em `pje.js`); peças ainda sem download aparecem como
+  2000 tokens, texto ≈ chars/3,5 sobre o que já está em `docsCache` (o tipo vem de
+  `lerCorpo` em `pje.js`: content-type + assinatura `%PDF-` nos primeiros 1024
+  bytes — PDF servido como octet-stream não pode cair no ramo de texto, que
+  desperdiçaria ~17 mil tokens de lixo binário; HTML honra o charset do header
+  ao decodificar); peças ainda sem download aparecem como
   "N peça(s) sem medir" (`pendentes` no gauge) — nunca fingir precisão;
   (1b) refinamento em segundo plano (debounce 900 ms): `baixarQuieto` (concorrência
   3, progresso peça a peça re-alimentando a estimativa local) → `subirPecas`
@@ -222,8 +225,14 @@ expandido.
 ## Convenções
 
 - Comentários e strings de UI em português do Brasil (com acentuação correta).
-- Identidade visual: azul-marinho `#14243d`, dourado `#c49e60`, papel `#fbf9f4`,
-  títulos em Georgia serif. Variáveis CSS no topo de `panel.css` (`.wrap`).
+- Identidade visual: paleta do próprio PJe — azul-petróleo `#0078aa` (`--pje`, cor
+  da barra do PJe/TJCE), escurecido `#005f88` (`--pje-2`, gradientes/hover/balão do
+  usuário — texto branco sobre `#0078aa` puro passa AA por pouco, por isso texto
+  longo usa o tom escuro), azul claro `#62a9c7` (`--pje-soft`, medidores), fundos
+  frios `#f6f9fb`, títulos em Georgia serif. Variáveis CSS no topo de `panel.css`
+  (`.wrap`) e espelhadas em `ui.css` (`:root`, popup/opções/ajuda — HTMLs têm
+  referências inline a `var(--pje-2)`). Cores semânticas preservadas: categorias
+  `--cat-*`, verde de sucesso, laranja da `.alertbar`/gauge crítico.
 - Modelos da API: manter os IDs do `popup.html`/`options.html` alinhados aos aliases
   atuais da Anthropic (`claude-sonnet-5` é o default em `background.js`) e a tabela
   `MODEL_CAPS` sincronizada com os docs (limites, versões de tools, thinking/effort).
