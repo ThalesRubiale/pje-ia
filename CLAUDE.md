@@ -279,7 +279,11 @@ botão Enviar vira "📄 Gerar" — Enviar/Enter disparam o request `gerarDoc` c
 selecionadas + a instrução do campo (vazia cai na padrão). ✕ na faixa, Esc (com o
 popup `@` fechado) ou novo clique no botão cancelam; "Nova conversa" também desliga o
 modo. Não reintroduzir o fluxo antigo de "dois cliques no mesmo botão" — o usuário
-sempre aperta Enviar. O worker extrai o
+sempre aperta Enviar. O sufixo de formatação anexado à instrução em content.js é
+PRESCRITIVO de propósito (tabelas nativas obrigatórias, autocorreção de código,
+verificação do arquivo com python-docx antes de entregar): modelos menores (Haiku)
+seguem instruções literalmente e, sem essas regras, às vezes entregavam o .docx sem
+tabelas — não suavizar o texto. O worker extrai o
 `file_id` dos blocos
 `bash_code_execution_tool_result` (fica com o **último** `.docx` gerado), baixa via Files
 API e repassa os bytes pelo Port; o content script dispara o download com Blob + âncora

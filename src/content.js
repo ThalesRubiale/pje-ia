@@ -1190,10 +1190,21 @@
               ...blocos,
               {
                 type: "text",
+                // Prescritivo de propósito: modelos menores (Haiku) seguem
+                // instruções ao pé da letra — sem as regras explícitas, às
+                // vezes entregavam o .docx sem tabelas (desistiam no primeiro
+                // erro do python-docx ou "desenhavam" a tabela como texto).
                 text:
                   instrucao +
-                  " Gere o resultado como um arquivo Word (.docx) bem formatado " +
-                  "(títulos, listas e tabelas), usando a skill docx.",
+                  " Gere o resultado como um arquivo Word (.docx) bem formatado, usando a skill docx." +
+                  " Regras de formatação OBRIGATÓRIAS: use títulos e subtítulos hierárquicos;" +
+                  " apresente dados tabulares (partes, linha do tempo dos atos, prazos, valores," +
+                  " provas) em TABELAS NATIVAS do Word — nunca como texto corrido, markdown ou" +
+                  " colunas alinhadas com espaços; use listas com marcadores quando couber." +
+                  " Se algum passo do código falhar (ex.: criação de tabela), corrija o código e" +
+                  " execute novamente até funcionar — não entregue o documento sem as tabelas." +
+                  " Antes de encerrar, reabra o arquivo gerado com python-docx e confirme que as" +
+                  " tabelas estão presentes; se alguma faltar, refaça o documento.",
               },
             ],
           },
