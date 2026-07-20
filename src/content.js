@@ -306,8 +306,10 @@
       };
       if (opts && opts.tools) payload.tools = opts.tools;
       r = await rpc({ type: "countTokens", payload });
-    } catch {
-      return null; // estimativa é opcional
+    } catch (e) {
+      // estimativa é opcional, mas a falha precisa ser diagnosticável (F12)
+      console.debug("[PJe IA] count_tokens falhou:", (e && e.message) || e);
+      return null;
     }
     if (!r || !r.tokens || !r.contextTokens) return null;
     const pct = Math.round((r.tokens / r.contextTokens) * 100);
@@ -468,6 +470,7 @@
             content: m.content || [],
             stopReason: m.stopReason || null,
             usage: m.usage || null,
+            usageReq: m.usageReq || null,
             custoUsd: m.custoUsd == null ? null : m.custoUsd,
           });
         } else if (m.type === "error") {
@@ -617,6 +620,29 @@
     return t;
   }
 
+  // Depois de um turno bem-sucedido, o usage do ÚLTIMO request físico é a
+  // medição EXATA do contexto (entrada + cache + resposta que acabou de entrar
+  // no histórico) — atualiza o medidor de graça, sem novo count_tokens.
+  function atualizarGaugePosTurno(fim, ids) {
+    const u = fim && fim.usageReq;
+    if (!u || !modelCaps) return;
+    const tokens =
+      (u.input_tokens || 0) +
+      (u.cache_creation_input_tokens || 0) +
+      (u.cache_read_input_tokens || 0) +
+      (u.output_tokens || 0);
+    if (!tokens) return;
+    panel.setContexto({
+      tokens,
+      ctxTokens: modelCaps.contextTokens,
+      paginas: paginasDe(ids),
+      maxPaginas: modelCaps.maxPages,
+      pecas: ids.length,
+    });
+    // medição real deste estado: refreshs da timeline não precisam re-medir
+    ultimaChaveEst = ids.slice().sort().join(",") + "|" + conversation.length;
+  }
+
   function mostrarEstimativaLocal(ids) {
     if (!modelCaps) return;
     panel.setContexto({
@@ -633,6 +659,10 @@
 
   panel.onSelectionChange((ids) => {
     clearTimeout(estTimer);
+    // Durante um turno o ENVIO é dono do medidor: refreshs da timeline do PJe
+    // disparam syncSelection sem mudança real e sobrescreveriam a medição
+    // oficial com uma estimativa local defasada.
+    if (busy) return;
     if (!ids.length && !conversation.length) {
       estSeq++; // cancela estimativas em voo
       panel.setContexto(null); // nada selecionado e nada conversado: sem medidor
@@ -792,6 +822,12 @@
           maxPaginas: modelCaps ? modelCaps.maxPages : 0,
           pecas: selectedIds.length,
         });
+      } else {
+        // count_tokens falhou (ex.: 429 após muitos uploads): re-pinta com a
+        // estimativa local — o cache agora tem todas as peças baixadas, então
+        // o número é decente. Sem isto o medidor ficaria CONGELADO no retrato
+        // de quando a seleção foi feita ("N peça(s) sem medir", 0%).
+        mostrarEstimativaLocal(selectedIds);
       }
 
       conversation.push({ role: "user", content: userContent });
@@ -879,6 +915,7 @@
         });
         // turno gravado com tools declaradas \u2192 mant\u00EA-las at\u00E9 "Nova conversa"
         if (opts.tools) buscaNaConversa = true;
+        atualizarGaugePosTurno(fim, selectedIds);
         let st = "";
         if (truncated)
           st = "A resposta atingiu o tamanho máximo — peça para continuar, se necessário.";

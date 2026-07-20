@@ -196,13 +196,16 @@ async function executarTurno(port, payload) {
   let contentAcumulado = [];
   let stopReason = null;
   // Um turno lógico pode ser vários requests físicos (continuações pause_turn):
-  // o custo correto é a SOMA dos usage de todas as iterações.
+  // o CUSTO correto é a SOMA dos usage de todas as iterações; já o TAMANHO do
+  // contexto é o usage do ÚLTIMO request (cada iteração reenvia o prefixo —
+  // somar duplicaria a contagem).
   const usoTotal = {
     input_tokens: 0,
     output_tokens: 0,
     cache_creation_input_tokens: 0,
     cache_read_input_tokens: 0,
   };
+  let usoUltimo = null;
 
   for (let tentativa = 0; tentativa < 8; tentativa++) {
     const req = Object.assign({}, baseReq, { messages });
@@ -226,6 +229,7 @@ async function executarTurno(port, payload) {
     stopReason = final.stopReason;
     if (final.usage) {
       for (const k of Object.keys(usoTotal)) usoTotal[k] += final.usage[k] || 0;
+      usoUltimo = final.usage;
     }
     // geração com skills: preserva o container para as continuações
     if (final.containerId && payload.container) {
@@ -248,6 +252,7 @@ async function executarTurno(port, payload) {
     content: contentAcumulado,
     stopReason,
     usage: usoTotal,
+    usageReq: usoUltimo,
     custoUsd: custoUsdDe(usoTotal, caps.preco),
   };
 }
@@ -333,6 +338,7 @@ chrome.runtime.onConnect.addListener((port) => {
           content: r.content,
           stopReason: r.stopReason,
           usage: r.usage || null,
+          usageReq: r.usageReq || null,
           custoUsd: r.custoUsd == null ? null : r.custoUsd,
         })
       )

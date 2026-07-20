@@ -126,7 +126,16 @@ Haiku) e `effort` (não suportado no Haiku).
   serializada e levaria minutos; fica a estimativa parcial e a medição completa
   acontece no envio. `estSeq` descarta respostas atrasadas e `ultimaChaveEst`
   (ids ordenados + tamanho da conversa) evita re-medir nos refreshs da timeline —
-  a chave é limpa sempre que o alerta liga, para a próxima mudança re-medir;
+  a chave é limpa sempre que o alerta liga, para a próxima mudança re-medir.
+  Durante um turno (`busy`) o handler de seleção retorna cedo: refreshs da
+  timeline do PJe disparam `syncSelection` sem mudança real e sobrescreveriam
+  a medição oficial do envio. Se o count_tokens do envio falhar (ex.: 429 —
+  o motivo agora vai ao console), o fallback re-pinta a estimativa local com
+  o cache já cheio (sem isso o medidor congelava no retrato do clique, "N
+  peça(s) sem medir"). Após o turno, `atualizarGaugePosTurno` usa o
+  `usageReq` (usage do ÚLTIMO request físico — a soma das iterações
+  `pause_turn` serve para custo, mas duplicaria o tamanho do contexto) como
+  medição EXATA, de graça, e memoriza `ultimaChaveEst`;
   (2) bloqueio a >90% da janela em `estimarContexto` (erro com flag `ctxCheio`);
   (3) barra de alerta persistente `panel.setAlerta` (`.alertbar`, `role="alert"`, com
   botão ⟲) ligada quando o envio é bloqueado ou em `model_context_window_exceeded` —
