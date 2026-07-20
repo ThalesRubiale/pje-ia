@@ -372,13 +372,17 @@ var PjePanel = (function () {
         "as peças, envia a solicitação, e a resposta usa somente os documentos marcados. " +
         "Entre uma pergunta e outra, dá para marcar e desmarcar peças à vontade.</p>" +
         "<p><b>Contexto limitado:</b> a conversa inteira (peças + perguntas + respostas) " +
-        "precisa caber na janela do modelo — até <b>1 milhão de tokens</b> no modelo padrão. " +
-        "O medidor acima do campo mostra o quanto já foi usado. Processos volumosos podem " +
-        "não caber: analise por partes, desmarcando peças para liberar espaço.</p>" +
-        '<p>💡 Para autos muito grandes, conheça o <a href="https://pjece.tecjustica.com/" ' +
-        'target="_blank" rel="noopener">PJe-CE · TecJustiça MCP</a> — demonstração com o ' +
-        "PJe do Ceará em que o contexto é gerenciado automaticamente pelo código (via MCP): " +
-        "a análise de processos grandes fica bem mais tranquila.</p>" +
+        "precisa caber na janela do modelo — até <b>200 mil tokens</b> no modelo padrão " +
+        "(Haiku 4.5, rápido e barato). Para autos volumosos, escolha um modelo com janela " +
+        "de <b>1 milhão de tokens</b> (ex.: Sonnet 5) na configuração da extensão. " +
+        "O medidor acima do campo mostra o quanto já foi usado; se não couber, " +
+        "analise por partes, desmarcando peças para liberar espaço.</p>" +
+        '<p>💡 Para autos muito grandes, conheça o <a href="https://mcp.tecjustica.com/" ' +
+        'target="_blank" rel="noopener">TecJustiça MCP</a> — servidor MCP em que o contexto ' +
+        "do processo é gerenciado automaticamente pelo código — e a demonstração com o PJe " +
+        'do Ceará em <a href="https://pjece.tecjustica.com/" target="_blank" ' +
+        'rel="noopener">pjece.tecjustica.com</a>: a análise de processos grandes fica bem ' +
+        "mais tranquila.</p>" +
         "</div>";
       msgs.appendChild(hintEl);
     }

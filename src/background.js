@@ -70,15 +70,20 @@ function custoUsdDe(usage, preco) {
   );
 }
 function capsDe(model) {
-  return MODEL_CAPS[model] || MODEL_CAPS["claude-sonnet-5"];
+  return MODEL_CAPS[model] || MODEL_CAPS["claude-haiku-4-5"];
 }
 
+// Default: Haiku 4.5 — mais rápido e ~3× mais barato que o Sonnet 5; todas as
+// features funcionam nele (inclusive a skill docx via code_execution_20260521,
+// confirmado nos docs). O custo funcional é a janela menor (200 mil tokens,
+// 100 págs. de PDF) — para autos volumosos o usuário troca para o Sonnet 5
+// (1M) no popup/opções; o MODEL_CAPS e o medidor cuidam dos limites.
 function getCfg() {
   return new Promise((resolve) =>
     chrome.storage.local.get(["apiKey", "model", "effort"], (v) =>
       resolve({
         apiKey: v.apiKey,
-        model: v.model || "claude-sonnet-5",
+        model: v.model || "claude-haiku-4-5",
         effort: v.effort || "high",
       })
     )

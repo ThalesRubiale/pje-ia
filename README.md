@@ -28,7 +28,8 @@ documentos que você marcou — nada entra no contexto sem a sua escolha.
 
 É um modelo diferente do de um **agente autônomo** — como o **Claude Code** ou agentes
 construídos com a **Claude Agent SDK** e frameworks afins — que, conectado a um MCP
-jurídico como o [TecJustiça](https://pjece.tecjustica.com/), decide sozinho quais peças
+jurídico como o [TecJustiça MCP](https://mcp.tecjustica.com/) (demonstração com o PJe-CE
+em [pjece.tecjustica.com](https://pjece.tecjustica.com/)), decide sozinho quais peças
 abrir, lê os autos por conta própria e gerencia o contexto automaticamente.
 
 | | **PJe IA (esta extensão)** | **Agente autônomo + MCP** (Claude Code, Agent SDK…) |
@@ -42,7 +43,7 @@ abrir, lê os autos por conta própria e gerencia o contexto automaticamente.
 Os dois se complementam: para o dia a dia dentro do PJe, o chat manual é direto e
 previsível (você sabe exatamente o que a IA leu); para autos gigantes ou tarefas de
 investigação aberta, um agente com MCP é o caminho — o próprio painel sugere o
-[TecJustiça MCP](https://pjece.tecjustica.com/) quando o contexto enche.
+[TecJustiça MCP](https://mcp.tecjustica.com/) quando o contexto enche.
 
 ## ✨ Recursos
 

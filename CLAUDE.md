@@ -196,9 +196,11 @@ Haiku) e `effort` (não suportado no Haiku).
   limpa; `setDocs` re-aplica o filtro após re-renderizar a lista.
 - **Orientações no estado vazio** (`showEmptyHint`): box `.guia` explica que NÃO é
   um agente autônomo (seleciona peças → envia solicitação), o limite de contexto
-  (~1M tokens no modelo padrão, medidor no rodapé) e cita o TecJustiça MCP do
-  PJe-CE (https://pjece.tecjustica.com/) como alternativa para autos volumosos com
-  gerenciamento automático de contexto. Manter o link ao editar o hint.
+  (200 mil tokens no modelo padrão Haiku 4.5; modelos de 1M na configuração —
+  medidor no rodapé) e cita o TecJustiça MCP (https://mcp.tecjustica.com/) e a
+  demonstração com o PJe-CE (https://pjece.tecjustica.com/) como alternativa para
+  autos volumosos com gerenciamento automático de contexto. Manter os DOIS links
+  ao editar o hint.
 
 ## Modos de layout, preview no hover e "ver na timeline" (panel.js/pje.js)
 
@@ -303,7 +305,10 @@ expandido.
   referências inline a `var(--pje-2)`). Cores semânticas preservadas: categorias
   `--cat-*`, verde de sucesso, laranja da `.alertbar`/gauge crítico.
 - Modelos da API: manter os IDs do `popup.html`/`options.html` alinhados aos aliases
-  atuais da Anthropic (`claude-sonnet-5` é o default em `background.js`) e a tabela
+  atuais da Anthropic (`claude-haiku-4-5` é o default em `background.js` — rápido e
+  barato; todas as features funcionam nele, inclusive a skill docx com
+  `code_execution_20260521`; a janela menor de 200 mil tokens/100 págs. é o custo
+  aceito, com o Sonnet 5 de 1M oferecido para autos volumosos) e a tabela
   `MODEL_CAPS` sincronizada com os docs (limites, versões de tools, thinking/effort).
 - Config no `chrome.storage.local`: `apiKey`, `model`, `effort` (baixo/médio/alto —
   `output_config.effort`; omitido nos modelos sem suporte).
