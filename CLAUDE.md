@@ -209,9 +209,16 @@ Haiku) e `effort` (não suportado no Haiku).
   `PJE.carregarTimelineCompleta`): a timeline do PJe carrega as peças sob
   demanda (scroll infinito) — em processos maiores, só o trecho já rolado
   existe no DOM e, portanto, na lista do painel. O botão rola o container da
-  timeline programaticamente até o fim (scroller detectado por heurística:
-  primeiro ancestral com overflow rolável, senão a janela), aguardando cada
-  leva do servidor até a lista parar de crescer por 2 rodadas (teto 90 s);
+  timeline programaticamente até o fim. Scroller por heurística em 3 níveis:
+  (1) primeiro DESCENDENTE rolável da timeline que contenha links — o caso
+  real do TJCE (`div.eventos-timeline.scroll-y`; o `#divTimeLine` e TODOS os
+  ancestrais têm overflow visible, e o `#pageBody`, único ancestral com
+  overflow:auto, fica com scrollHeight == clientHeight — armadilha que
+  derrubou a v1, que só olhava ancestrais); (2) ancestral rolável; (3) a
+  janela. Timeline e scroller são RE-LOCALIZADOS a cada rodada — o re-render
+  A4J que anexa as peças substitui os nós, e referência guardada viraria
+  no-op. Aguarda cada leva do servidor até a lista parar de crescer por 2
+  rodadas (teto 90 s);
   o MutationObserver da timeline repovoa a lista ao vivo e, ao final, a
   rolagem volta para onde estava. NÃO clica em nada (zero efeito A4J/JSF,
   não toca na `activationChain` — por isso também não precisa de guarda de

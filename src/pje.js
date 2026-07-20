@@ -256,28 +256,48 @@ var PJE = (function () {
   // usuário faria à mão (a rolagem programática dispara o evento scroll
   // nativo que o lazy load do PJe escuta). Ao final, devolve a rolagem para
   // onde estava. onProgress recebe o total de peças a cada rodada.
+  function rolavel(el) {
+    return (
+      /(auto|scroll)/.test(getComputedStyle(el).overflowY) &&
+      el.scrollHeight > el.clientHeight + 10
+    );
+  }
+
   function acharScroller(tl) {
-    // O elemento que de fato rola varia por tribunal/tema: pode ser a própria
-    // div da timeline, um ancestral com overflow, ou a página inteira.
+    // O elemento que de fato rola varia por tribunal/tema. No TJCE (validado
+    // ao vivo) é um DESCENDENTE da timeline: div.eventos-timeline.scroll-y —
+    // o #divTimeLine em si e todos os seus ancestrais têm overflow visible.
+    // Ordem de busca: (1) descendente rolável que contenha os links das
+    // peças; (2) ancestral rolável; (3) a janela, como último recurso.
+    const desc = [...tl.querySelectorAll("*")].find(
+      (el) => rolavel(el) && el.querySelector("a")
+    );
+    if (desc) return desc;
     for (let el = tl; el && el !== document.body; el = el.parentElement) {
-      const cs = getComputedStyle(el);
-      if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 10)
-        return el;
+      if (rolavel(el)) return el;
     }
     return window;
   }
 
   async function carregarTimelineCompleta(onProgress) {
-    const tl = document.querySelector("#divTimeLine");
+    let tl = document.querySelector("#divTimeLine");
     if (!tl) return { total: 0, completo: true };
-    const sc = acharScroller(tl);
-    const scrollAntes = sc === window ? window.scrollY : sc.scrollTop;
+    const scrollAntes = (() => {
+      const sc = acharScroller(tl);
+      return sc === window ? window.scrollY : sc.scrollTop;
+    })();
     const contar = () => document.querySelectorAll("#divTimeLine a").length;
     const inicio = Date.now();
     const TETO_MS = 90000;
     let total = contar();
     let estaveis = 0; // rodadas seguidas sem crescimento — 2 encerram
     while (estaveis < 2 && Date.now() - inicio < TETO_MS) {
+      // Re-localiza timeline e scroller a CADA rodada: o re-render A4J que
+      // anexa as peças novas pode substituir os nós no DOM — uma referência
+      // guardada apontaria para um elemento morto e a rolagem viraria no-op.
+      tl = document.querySelector("#divTimeLine");
+      if (!tl) break; // página re-renderizou/navegou no meio
+      const sc = acharScroller(tl);
       if (sc === window) {
         window.scrollTo(0, document.documentElement.scrollHeight);
       } else {
@@ -295,8 +315,12 @@ var PJE = (function () {
       if (onProgress) onProgress(listarDocumentos().length);
       estaveis = cresceu ? 0 : estaveis + 1;
     }
-    if (sc === window) window.scrollTo(0, scrollAntes);
-    else sc.scrollTop = scrollAntes;
+    const tlFim = document.querySelector("#divTimeLine");
+    if (tlFim) {
+      const sc = acharScroller(tlFim);
+      if (sc === window) window.scrollTo(0, scrollAntes);
+      else sc.scrollTop = scrollAntes;
+    }
     return {
       total: listarDocumentos().length,
       completo: Date.now() - inicio < TETO_MS,
