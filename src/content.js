@@ -123,26 +123,68 @@
 
   const panel = PjePanel.mount();
 
+  // ---------------------------------------------------------------------------
+  // Contexto órfão: quando a extensão é atualizada/recarregada em
+  // chrome://extensions, o content script antigo continua vivo na aba, mas
+  // QUALQUER chamada a chrome.runtime/chrome.storage passa a lançar
+  // "Extension context invalidated" (erro não capturável no console do
+  // usuário). Todas as chamadas passam por estas guardas: silenciam o erro
+  // e avisam UMA vez para recarregar a aba (F5 injeta o script novo).
+  // ---------------------------------------------------------------------------
+  const MSG_CTX_PERDIDO =
+    "A extensão foi atualizada ou recarregada. Recarregue esta página (F5) para voltar a usar o assistente.";
+  let contextoPerdido = false;
+  function avisarContextoPerdido() {
+    if (contextoPerdido) return;
+    contextoPerdido = true;
+    try {
+      panel.setAlerta(MSG_CTX_PERDIDO);
+      panel.lockInput(true);
+    } catch {
+      /* painel pode não existir mais — nada a fazer */
+    }
+  }
+  function extensaoViva() {
+    try {
+      if (chrome.runtime && chrome.runtime.id) return true;
+    } catch {
+      /* no contexto órfão até LER chrome.runtime pode lançar */
+    }
+    avisarContextoPerdido();
+    return false;
+  }
+
   // Request/response com o worker (upload, contagem de tokens, capacidades).
   function rpc(msg) {
     return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(msg, (resp) => {
-        if (chrome.runtime.lastError)
-          return reject(new Error(chrome.runtime.lastError.message));
-        if (!resp) return reject(new Error("sem resposta do serviço da extensão"));
-        if (resp.error) return reject(new Error(resp.error));
-        resolve(resp);
-      });
+      if (!extensaoViva()) return reject(new Error(MSG_CTX_PERDIDO));
+      try {
+        chrome.runtime.sendMessage(msg, (resp) => {
+          if (chrome.runtime.lastError)
+            return reject(new Error(chrome.runtime.lastError.message));
+          if (!resp) return reject(new Error("sem resposta do serviço da extensão"));
+          if (resp.error) return reject(new Error(resp.error));
+          resolve(resp);
+        });
+      } catch {
+        avisarContextoPerdido();
+        reject(new Error(MSG_CTX_PERDIDO));
+      }
     });
   }
 
   // Capacidades do modelo atual (limite de páginas, contexto, ferramentas web).
   let modelCaps = null;
   function refreshCaps() {
-    chrome.runtime.sendMessage({ type: "caps" }, (r) => {
-      void chrome.runtime.lastError; // worker pode estar acordando — sem ruído
-      if (r && r.caps) modelCaps = r.caps;
-    });
+    if (!extensaoViva()) return;
+    try {
+      chrome.runtime.sendMessage({ type: "caps" }, (r) => {
+        void chrome.runtime.lastError; // worker pode estar acordando — sem ruído
+        if (r && r.caps) modelCaps = r.caps;
+      });
+    } catch {
+      avisarContextoPerdido();
+    }
   }
   refreshCaps();
 
@@ -151,25 +193,43 @@
   function garantirCaps() {
     if (modelCaps) return Promise.resolve();
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: "caps" }, (r) => {
-        void chrome.runtime.lastError;
-        if (r && r.caps) modelCaps = r.caps;
-        resolve(); // sem caps segue mesmo assim: count_tokens e a API guardam
-      });
+      if (!extensaoViva()) return resolve();
+      try {
+        chrome.runtime.sendMessage({ type: "caps" }, (r) => {
+          void chrome.runtime.lastError;
+          if (r && r.caps) modelCaps = r.caps;
+          resolve(); // sem caps segue mesmo assim: count_tokens e a API guardam
+        });
+      } catch {
+        avisarContextoPerdido();
+        resolve();
+      }
     });
   }
 
   // Estado da chave: mostra CTA de configuração quando ausente e reage a mudanças
   // (ex.: quando o usuário salva a chave pelo popup, sem recarregar a página).
   function refreshKey() {
-    chrome.storage.local.get(["apiKey"], (v) => panel.setConfigured(!!v.apiKey));
+    if (!extensaoViva()) return;
+    try {
+      chrome.storage.local.get(["apiKey"], (v) => panel.setConfigured(!!v.apiKey));
+    } catch {
+      avisarContextoPerdido();
+    }
   }
   refreshKey();
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area === "local" && ch.apiKey) refreshKey();
     if (area === "local" && (ch.model || ch.apiKey)) refreshCaps();
   });
-  panel.onConfigure(() => chrome.runtime.sendMessage({ type: "openOptions" }));
+  panel.onConfigure(() => {
+    if (!extensaoViva()) return;
+    try {
+      chrome.runtime.sendMessage({ type: "openOptions" });
+    } catch {
+      avisarContextoPerdido();
+    }
+  });
 
   panel.onReset(() => {
     if (busy) return; // não zera no meio de uma resposta
@@ -480,56 +540,95 @@
   // Abre um canal com o worker e resolve quando o turno termina.
   // Resolve com {content, stopReason}: os blocos completos da resposta
   // (necessários no histórico para citações, ferramentas e thinking assinado).
+  //
+  // AUTO-RESUME: o service worker pode MORRER no meio de um turno longo (o
+  // MV3 mata o worker por várias razões, mesmo com keepalive; recarregar a
+  // extensão também mata) — a porta cai sem "done"/"error". O turno é
+  // STATELESS (o payload remonta tudo), então reconectamos e reenviamos
+  // sozinhos, até 2 vezes: o prefixo já está no cache de prompt e a
+  // repetição custa uma fração. handlers.onReinicio(n) zera a UI do turno
+  // (o novo envio re-streama tudo desde o início).
   function stream(messages, handlers, opts, tipo) {
+    const MAX_REENVIOS = 2;
     return new Promise((resolve, reject) => {
-      const port = chrome.runtime.connect({ name: "claude" });
-      let finished = false;
-      // Ping periódico: receber mensagem pela porta reseta o timer de
-      // ociosidade do service worker (MV3 mata o worker após ~30 s sem
-      // eventos — fatal na geração de .docx, que tem longos silêncios).
-      const ping = setInterval(() => {
+      let reenvios = 0;
+
+      function abrir() {
+        if (!extensaoViva()) return reject(new Error(MSG_CTX_PERDIDO));
+        let port;
         try {
-          port.postMessage({ type: "ping" });
+          port = chrome.runtime.connect({ name: "claude" });
         } catch {
-          clearInterval(ping);
+          avisarContextoPerdido();
+          return reject(new Error(MSG_CTX_PERDIDO));
         }
-      }, 20000);
-      port.onMessage.addListener((m) => {
-        if (m.type === "delta") handlers.onDelta(m.text);
-        else if (m.type === "thinking") handlers.onThinking(m.text);
-        else if (m.type === "citation") handlers.onCitation && handlers.onCitation(m.citation);
-        else if (m.type === "tool") handlers.onTool && handlers.onTool(m.name, m.input);
-        else if (m.type === "file") handlers.onFile && handlers.onFile(m);
-        else if (m.type === "trunc") handlers.onTrunc();
-        else if (m.type === "done") {
-          finished = true;
+        let finished = false;
+        // Ping periódico: receber mensagem pela porta reseta o timer de
+        // ociosidade do service worker (MV3 mata o worker após ~30 s sem
+        // eventos — fatal na geração de .docx, que tem longos silêncios).
+        const ping = setInterval(() => {
+          try {
+            port.postMessage({ type: "ping" });
+          } catch {
+            clearInterval(ping);
+          }
+        }, 15000);
+        port.onMessage.addListener((m) => {
+          if (m.type === "delta") handlers.onDelta(m.text);
+          else if (m.type === "thinking") handlers.onThinking(m.text);
+          else if (m.type === "citation") handlers.onCitation && handlers.onCitation(m.citation);
+          else if (m.type === "tool") handlers.onTool && handlers.onTool(m.name, m.input);
+          else if (m.type === "file") handlers.onFile && handlers.onFile(m);
+          else if (m.type === "trunc") handlers.onTrunc();
+          // "iter": novo request físico do turno (checkpoint do texto na UI);
+          // "retry": o worker vai re-tentar o request após erro transitório —
+          // descartar o que chegou DEPOIS do último checkpoint (evita duplicar)
+          else if (m.type === "iter") handlers.onIter && handlers.onIter();
+          else if (m.type === "retry") handlers.onRetry && handlers.onRetry();
+          else if (m.type === "done") {
+            finished = true;
+            clearInterval(ping);
+            port.disconnect();
+            resolve({
+              content: m.content || [],
+              stopReason: m.stopReason || null,
+              usage: m.usage || null,
+              usageReq: m.usageReq || null,
+              custoUsd: m.custoUsd == null ? null : m.custoUsd,
+            });
+          } else if (m.type === "error") {
+            finished = true;
+            clearInterval(ping);
+            port.disconnect();
+            reject(new Error(m.error));
+          }
+        });
+        port.onDisconnect.addListener(() => {
           clearInterval(ping);
-          port.disconnect();
-          resolve({
-            content: m.content || [],
-            stopReason: m.stopReason || null,
-            usage: m.usage || null,
-            usageReq: m.usageReq || null,
-            custoUsd: m.custoUsd == null ? null : m.custoUsd,
-          });
-        } else if (m.type === "error") {
-          finished = true;
-          clearInterval(ping);
-          port.disconnect();
-          reject(new Error(m.error));
-        }
-      });
-      port.onDisconnect.addListener(() => {
-        clearInterval(ping);
-        if (!finished) reject(new Error("conexão com o serviço interrompida — tente de novo"));
-      });
-      port.postMessage({
-        type: tipo || "chat",
-        payload: Object.assign(
-          { system: SYSTEM_PROMPT, messages, betas: BETAS_CHAT },
-          opts || {}
-        ),
-      });
+          if (finished) return;
+          // worker morto no meio do turno: reenvia do zero (payload intacto)
+          if (reenvios < MAX_REENVIOS && extensaoViva()) {
+            reenvios++;
+            console.debug(
+              "[PJe IA] serviço caiu no meio do turno — reenviando (" +
+                reenvios + "/" + MAX_REENVIOS + ")"
+            );
+            if (handlers.onReinicio) handlers.onReinicio(reenvios);
+            setTimeout(abrir, 1200); // respiro para o worker renascer
+          } else {
+            reject(new Error("conexão com o serviço interrompida — tente de novo"));
+          }
+        });
+        port.postMessage({
+          type: tipo || "chat",
+          payload: Object.assign(
+            { system: SYSTEM_PROMPT, messages, betas: BETAS_CHAT },
+            opts || {}
+          ),
+        });
+      }
+
+      abrir();
     });
   }
 
@@ -881,6 +980,7 @@
       let statusFerramenta = false; // há status de busca/ferramenta na tela
       const citeKeys = new Map();
       let thinkAcc = "";
+      let ckpt = null; // estado da UI no início do request físico corrente
       const fim = await stream(msgsEnvio, {
         onDelta(delta) {
           // limpa o status inicial e também o de ferramenta (a busca acabou
@@ -937,6 +1037,41 @@
         },
         onTrunc() {
           truncated = true;
+        },
+        // Checkpoint por request físico: em re-tentativa transitória do
+        // worker, volta ao estado do início da iteração que falhou (o que já
+        // chegou dela chegaria DE NOVO e duplicaria texto/citações na tela).
+        onIter() {
+          ckpt = {
+            acc,
+            think: thinkAcc,
+            nCites: cites.length,
+          };
+        },
+        onRetry() {
+          if (ckpt) {
+            acc = ckpt.acc;
+            thinkAcc = ckpt.think;
+            cites.length = ckpt.nCites;
+            for (const [k, n] of citeKeys) if (n > ckpt.nCites) citeKeys.delete(k);
+          } else {
+            acc = "";
+          }
+          panel.updateAssistant(assistantEl, acc, cites);
+          panel.setStatus("Instabilidade momentânea na API — tentando de novo…", true);
+        },
+        // O serviço da extensão morreu no meio: o turno recomeça DO ZERO
+        // (novo stream re-emite tudo) — zera todo o estado acumulado da UI.
+        onReinicio() {
+          acc = "";
+          thinkAcc = "";
+          cites.length = 0;
+          citeKeys.clear();
+          ckpt = null;
+          truncated = false;
+          statusFerramenta = false;
+          panel.updateAssistant(assistantEl, acc, cites);
+          panel.setStatus("O serviço da extensão reiniciou — reenviando a análise…", true);
         },
       }, opts);
       registrarCusto(fim);
@@ -1028,6 +1163,7 @@
     );
     let assistantEl = null;
     let acc = "";
+    let ckptDoc = ""; // texto na UI no início do request físico corrente
     let arquivo = null;
 
     try {
@@ -1083,6 +1219,25 @@
             arquivo = f;
           },
           onTrunc() {},
+          onIter() {
+            ckptDoc = acc;
+          },
+          onRetry() {
+            acc = ckptDoc;
+            panel.updateAssistant(assistantEl, acc);
+            panel.setStatus("Instabilidade momentânea na API — tentando gerar de novo…", true);
+          },
+          onReinicio(n) {
+            acc = "";
+            ckptDoc = "";
+            arquivo = null;
+            panel.updateAssistant(assistantEl, acc);
+            panel.setStatus(
+              "O serviço da extensão reiniciou — reenviando a geração do documento (tentativa " +
+                (n + 1) + ")… pode levar mais 1–2 minutos",
+              true
+            );
+          },
         },
         {
           tools: [{ type: "code_execution_20260521", name: "code_execution" }],
@@ -1092,7 +1247,12 @@
           // o parâmetro container (skills) exige a beta de code execution
           // JUNTO com a de skills — sem ela a API devolve 400
           betas: ["code-execution-2025-08-25", "skills-2025-10-02", "files-api-2025-04-14"],
-          maxTokens: 16000,
+          // 32000: modelos menores (Haiku) truncavam por max_tokens no meio do
+          // código e o turno acabava sem arquivo; todos os modelos aceitam 32K
+          maxTokens: 32000,
+          // o docx pode precisar de mais rodadas de code execution que o teto
+          // padrão de 8 continuações pause_turn — sobretudo no Haiku
+          maxIter: 16,
         },
         "gerarDoc"
       );

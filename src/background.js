@@ -175,9 +175,24 @@ function stripCitacoes(blocks) {
   });
 }
 
+// Erros transitórios que valem nova tentativa do MESMO request: 429/529/5xx
+// (flag retryable vinda do claude.js) e quedas de rede no meio do SSE — o
+// docx tem longos silêncios de code execution, janela típica dessas quedas.
+function erroRetryavel(e) {
+  if (e && e.retryable) return true;
+  const msg = String((e && e.message) || e).toLowerCase();
+  return (
+    e instanceof TypeError ||
+    msg.includes("failed to fetch") ||
+    msg.includes("network") ||
+    msg.includes("err_")
+  );
+}
+const espera = (ms) => new Promise((r) => setTimeout(r, ms));
+
 // Executa um turno completo (com continuações pause_turn), emitindo o progresso
 // pelo Port. Retorna {content, stopReason}; lança erro em falha ou recusa.
-// payload: {system, messages, tools?, container?, betas?, maxTokens?}
+// payload: {system, messages, tools?, container?, betas?, maxTokens?, maxIter?}
 async function executarTurno(port, payload) {
   const { apiKey, model, effort } = await getCfg();
   if (!apiKey) {
@@ -212,21 +227,40 @@ async function executarTurno(port, payload) {
   };
   let usoUltimo = null;
 
-  for (let tentativa = 0; tentativa < 8; tentativa++) {
+  // Um turno lógico = até maxIter requests físicos (continuações pause_turn);
+  // o docx pede um teto maior (modelos menores precisam de mais rodadas de
+  // code execution). Cada request físico ganha até 2 RE-TENTATIVAS em erro
+  // transitório (429/529/5xx/queda de rede): "iter" marca o checkpoint na UI
+  // e "retry" manda descartar o parcial da tentativa que falhou — sem isso o
+  // texto duplicaria na tela.
+  const maxIter = payload.maxIter || 8;
+  for (let iteracao = 0; iteracao < maxIter; iteracao++) {
     const req = Object.assign({}, baseReq, { messages });
     if (container) req.container = container;
+    postar(port, { type: "iter" });
 
     let final = null;
-    for await (const ev of streamClaude(req)) {
-      if (ev.kind === "text") port.postMessage({ type: "delta", text: ev.text });
-      else if (ev.kind === "thinking")
-        port.postMessage({ type: "thinking", text: ev.text });
-      else if (ev.kind === "citation")
-        port.postMessage({ type: "citation", citation: ev.citation });
-      else if (ev.kind === "tool")
-        port.postMessage({ type: "tool", name: ev.name, input: ev.input });
-      else if (ev.kind === "trunc") port.postMessage({ type: "trunc" });
-      else if (ev.kind === "final") final = ev;
+    for (let tentativa = 0; ; tentativa++) {
+      try {
+        for await (const ev of streamClaude(req)) {
+          if (ev.kind === "text") postar(port, { type: "delta", text: ev.text });
+          else if (ev.kind === "thinking")
+            postar(port, { type: "thinking", text: ev.text });
+          else if (ev.kind === "citation")
+            postar(port, { type: "citation", citation: ev.citation });
+          else if (ev.kind === "tool")
+            postar(port, { type: "tool", name: ev.name, input: ev.input });
+          else if (ev.kind === "trunc") postar(port, { type: "trunc" });
+          else if (ev.kind === "final") final = ev;
+        }
+        break; // request físico concluído
+      } catch (e) {
+        if (tentativa >= 2 || !erroRetryavel(e)) throw e;
+        console.debug("[PJe IA] erro transitório, re-tentando:", String(e && e.message));
+        postar(port, { type: "retry" });
+        // 429 merece espera maior (janela de rate limit); demais, backoff curto
+        await espera(e && e.status === 429 ? 10000 : tentativa === 0 ? 2000 : 6000);
+      }
     }
     if (!final) throw new Error("o stream terminou sem resposta completa — tente de novo");
 
@@ -301,7 +335,18 @@ async function gerarDocumento(port, payload) {
 
   if (alvo) {
     const f = await downloadFile({ apiKey, fileId: alvo });
-    port.postMessage({ type: "file", filename: nome, b64: f.b64, mime: f.mime });
+    postar(port, { type: "file", filename: nome, b64: f.b64, mime: f.mime });
+  } else if (r.stopReason === "pause_turn") {
+    // o teto de iterações estourou ANTES de o arquivo sair — antes isso
+    // retornava em silêncio e o usuário via só "não gerou o arquivo"
+    throw new Error(
+      "a geração precisou de mais etapas do que o limite do servidor e não concluiu o arquivo — " +
+        "tente de novo (instruções mais simples ajudam; modelos menores, como o Haiku, às vezes precisam de nova tentativa)"
+    );
+  } else if (r.stopReason === "max_tokens") {
+    throw new Error(
+      "a resposta atingiu o limite de tokens antes de concluir o arquivo — tente de novo com uma instrução mais direta"
+    );
   }
   return r;
 }
@@ -311,7 +356,10 @@ async function gerarDocumento(port, payload) {
 // tem longos silêncios (code execution roda no servidor sem emitir SSE).
 // Chamar uma API de extensão de tempos em tempos reseta o timer de ociosidade.
 function manterVivo() {
-  const t = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 20000);
+  // 15 s (não 20): margem maior sobre o teto de ~30 s de ociosidade — o
+  // ping do content script pode atrasar com a aba em segundo plano
+  // (throttling de timers de página), então o worker não depende só dele.
+  const t = setInterval(() => chrome.runtime.getPlatformInfo(() => {}), 15000);
   return () => clearInterval(t);
 }
 

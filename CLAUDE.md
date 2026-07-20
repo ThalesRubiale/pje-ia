@@ -31,7 +31,15 @@ streaming SSE — **a chave nunca chega ao contexto da página**. Dois canais co
 
 - **Port** `chrome.runtime.connect({name:"claude"})` para os turnos (streaming). Tipos
   content→worker: `chat` e `gerarDoc`; worker→content: `delta`, `thinking`, `citation`,
-  `tool`, `file`, `trunc`, `done {content, stopReason}`, `error`.
+  `tool`, `file`, `trunc`, `iter` (início de request físico — checkpoint da UI),
+  `retry` (re-tentativa transitória — a UI reverte ao checkpoint para não duplicar
+  texto/citações), `done {content, stopReason}`, `error`. **AUTO-RESUME**: se a porta
+  cair SEM `done`/`error` (worker MV3 morto no meio do turno — acontece mesmo com
+  keepalive), `stream()` em content.js reconecta e REENVIA o payload sozinho (até 2
+  vezes; o turno é stateless e o prefixo está no cache de prompt). O handler
+  `onReinicio` zera TODO o estado de UI do turno (o novo stream re-emite do zero).
+  Não transformar esse reenvio em erro imediato — era a causa nº 1 de ".docx falha
+  às vezes" no Haiku.
 - **`chrome.runtime.sendMessage`** (request/response) para `caps` (capacidades do modelo),
   `upload` (Files API) e `countTokens` (pré-voo gratuito).
 
@@ -42,7 +50,16 @@ streaming SSE — **a chave nunca chega ao contexto da página**. Dois canais co
 e `input_json_delta`) e emite `{kind:"final", content, stopReason, containerId}`.
 `background.js` resolve sozinho as continuações de **`pause_turn`** (reenvia
 `messages + [{role:"assistant", content: parcial}]`, reutilizando `container.id` quando há
-skills; máx. 8 iterações) — o content script enxerga um único turno lógico.
+skills; máx. 8 iterações no chat e 16 na geração de documento — `payload.maxIter`) — o
+content script enxerga um único turno lógico. **Erros transitórios re-tentam sozinhos**:
+cada request físico ganha até 2 re-tentativas com backoff (429 espera 10 s) quando o
+erro é 429/529/5xx ou queda de rede no meio do SSE (flag `retryable` posta pelo
+`claude.js`; janela típica: os longos silêncios do code execution no docx). Se a
+geração de documento terminar sem arquivo com `stop_reason` `pause_turn` (teto de
+iterações) ou `max_tokens`, o worker LANÇA erro claro em vez de retornar em silêncio —
+o Haiku precisa de mais rodadas de code execution que o Sonnet e era onde o docx
+"falhava às vezes" sem explicação. `maxTokens` do docx é 32000 (16000 truncava o
+código do Haiku no meio).
 
 `MODEL_CAPS` em `background.js` governa por modelo: `contextTokens`, `maxPages` (600 nos
 modelos de 1M; 100 no Haiku), versões de `web_search`/`web_fetch` (variantes `_20260209`

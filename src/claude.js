@@ -13,7 +13,10 @@
 //   {kind:"final", content, stopReason, containerId, usage} — fim do request
 
 export const MAX_TOKENS_CHAT = 32000;
-export const MAX_TOKENS_DOCUMENTO = 16000;
+// 32000 (e não 16000): a geração de .docx escreve muito código nas iterações
+// de code execution — modelos menores (Haiku) truncavam por max_tokens no
+// meio, encerrando o turno sem arquivo. Todos os modelos aceitam 32K de saída.
+export const MAX_TOKENS_DOCUMENTO = 32000;
 
 // Betas usadas pela extensão (referência: docs da API, 2026).
 export const BETA_FILES = "files-api-2025-04-14";
@@ -53,7 +56,13 @@ export async function* streamClaude(req) {
     headers: headers(req.apiKey, req.betas),
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new Error(await friendlyHttpError(resp));
+  if (!resp.ok) {
+    const err = new Error(await friendlyHttpError(resp));
+    err.status = resp.status;
+    // transitórios: o chamador pode re-tentar o MESMO request com backoff
+    err.retryable = resp.status === 429 || resp.status === 529 || resp.status >= 500;
+    throw err;
+  }
 
   const blocks = []; // indexados por ev.index
   let stopReason = null;
@@ -124,8 +133,14 @@ export async function* streamClaude(req) {
         if (ev.delta && ev.delta.stop_reason === "max_tokens") yield { kind: "trunc" };
         break;
       }
-      case "error":
-        throw new Error((ev.error && ev.error.message) || "erro no stream da API");
+      case "error": {
+        // erro emitido NO MEIO do stream (ex.: overloaded_error durante o
+        // code execution) — sobrecarga/erro interno são re-tentáveis
+        const tipo = (ev.error && ev.error.type) || "";
+        const err = new Error((ev.error && ev.error.message) || "erro no stream da API");
+        err.retryable = /overloaded|api_error|internal/.test(tipo);
+        throw err;
+      }
     }
   }
 
