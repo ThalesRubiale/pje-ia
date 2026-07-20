@@ -1,12 +1,23 @@
 # PJe IA — Extensão Chrome
 
 Extensão Chrome (Manifest V3, JavaScript puro, **sem build step**) que adiciona um painel
-de chat com Claude à tela de autos digitais do PJe 1º grau. O usuário seleciona peças do
+de chat com Claude à tela de autos digitais do PJe. O usuário seleciona peças do
 processo e conversa sobre elas; os PDFs são enviados diretamente à API da Anthropic.
 
 ## Arquitetura
 
-Content scripts injetados em `https://pje.tjce.jus.br/pje1grau/*`, nesta ordem
+**Multi-PJe (default-on)**: `content_scripts`, `host_permissions` e
+`web_accessible_resources` cobrem `https://*.jus.br/*` — qualquer tribunal
+funciona sem nenhuma ação do usuário (decisão de produto: zero fricção; o
+aviso de permissão do Chrome fica mais amplo, aceito). Como o script roda em
+TODA página jus.br (login SSO, portais…), o boot do painel em `content.js`
+vive em `iniciar()`, chamada só quando `#divTimeLine` existe (ou surge — SPA
+do PJe novo) — sem timeline, nada é injetado no DOM. O grau e o base path
+variam por tribunal (`pje.tjce.jus.br/pje1grau`, `pje1g.trf5.jus.br/pje`…):
+`pje.js` deriva o base path da URL (`getBase`). `DOMINIOS_JURIDICOS` ganha o
+domínio-raiz do tribunal atual em runtime (busca de jurisprudência).
+
+Content scripts injetados nesta ordem
 (cada um é um IIFE que expõe um global — não há imports entre content scripts):
 
 | Arquivo | Global | Papel |

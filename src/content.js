@@ -4,6 +4,13 @@
   if (window.__pjeIaLoaded) return;
   window.__pjeIaLoaded = true;
 
+  // O content script roda em QUALQUER página *.jus.br (matches do manifest),
+  // mas a maioria não é uma tela de autos do PJe (login SSO, portais,
+  // consultas públicas…). Todo o boot do painel vive em iniciar(), chamada
+  // uma única vez quando a timeline de autos (#divTimeLine) existe — sem ela,
+  // nada é injetado no DOM da página. O bootstrap fica no fim do arquivo.
+  function iniciar() {
+
   const SYSTEM_PROMPT = [
     "Você é um assistente jurídico que analisa autos de processos do PJe.",
     "Responda sempre em português do Brasil.",
@@ -45,6 +52,14 @@
     "conjur.com.br",
     "migalhas.com.br",
   ];
+  // Multi-PJe: inclui o domínio-raiz do tribunal atual (ex.: pje1g.trf5.jus.br
+  // → trf5.jus.br) para a busca alcançar a jurisprudência do próprio tribunal.
+  {
+    const raiz = location.hostname.split(".").slice(-3).join(".");
+    if (/\.jus\.br$/.test(raiz) && !DOMINIOS_JURIDICOS.includes(raiz)) {
+      DOMINIOS_JURIDICOS.push(raiz);
+    }
+  }
 
   // Ferramentas de busca web na versão suportada pelo modelo atual.
   function toolsBusca() {
@@ -919,6 +934,11 @@
         let st = "";
         if (truncated)
           st = "A resposta atingiu o tamanho máximo — peça para continuar, se necessário.";
+        if (fim.stopReason === "pause_turn") {
+          // o teto de continuações do worker foi atingido com o servidor ainda
+          // pausado (busca web muito longa): a resposta pode estar incompleta
+          st = "A análise foi interrompida no limite de buscas — peça para continuar, se necessário.";
+        }
         if (fim.stopReason === "model_context_window_exceeded") {
           // o modelo estourou a janela no meio da resposta: alerta persistente
           ultimaChaveEst = "";
@@ -1079,4 +1099,22 @@
       panel.lockInput(false);
     }
   });
+
+  } // fim de iniciar()
+
+  // Bootstrap: monta o painel só em telas de autos do PJe. Em apps de página
+  // única (frontend novo do PJe) a timeline pode surgir bem depois do load —
+  // o observer fica atento até ela aparecer (custo desprezível: um
+  // querySelector por lote de mutações).
+  if (document.querySelector("#divTimeLine")) {
+    iniciar();
+  } else {
+    const boot = new MutationObserver(() => {
+      if (document.querySelector("#divTimeLine")) {
+        boot.disconnect();
+        iniciar();
+      }
+    });
+    boot.observe(document.documentElement, { childList: true, subtree: true });
+  }
 })();

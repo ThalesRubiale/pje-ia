@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "PJe IA — Análise de Processos",
-  "version": "0.5.0",
-  "description": "Painel de chat com IA (Claude) para analisar os autos do PJe 1º grau. Selecione as peças e converse com o modelo.",
+  "version": "0.6.0",
+  "description": "Painel de chat com IA (Claude) para analisar os autos do PJe de qualquer tribunal. Selecione as peças e converse com o modelo.",
   "permissions": ["storage"],
   "host_permissions": [
-    "https://pje.tjce.jus.br/*",
+    "https://*.jus.br/*",
     "https://api.anthropic.com/*"
   ],
   "icons": {
@@ -21,7 +21,7 @@
   "options_page": "src/options.html",
   "content_scripts": [
     {
-      "matches": ["https://pje.tjce.jus.br/pje1grau/*"],
+      "matches": ["https://*.jus.br/*"],
       "js": ["src/pje.js", "src/panel.js", "src/content.js"],
       "run_at": "document_idle"
     }
@@ -29,7 +29,7 @@
   "web_accessible_resources": [
     {
       "resources": ["src/panel.css", "icons/icon48.png"],
-      "matches": ["https://pje.tjce.jus.br/*"]
+      "matches": ["https://*.jus.br/*"]
     }
   ],
   "action": {

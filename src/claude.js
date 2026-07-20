@@ -287,7 +287,8 @@ async function friendlyHttpError(resp) {
   if (resp.status === 429) {
     return "Limite de requisições atingido. Aguarde alguns instantes e tente de novo.";
   }
-  if (resp.status === 413 || low.includes("too large") || low.includes("exceeds")) {
+  // restrito a 413/400: "exceeds"/"too large" em outros status têm outra causa
+  if (resp.status === 413 || (resp.status === 400 && low.includes("too large"))) {
     return "As peças selecionadas são grandes demais para uma única análise. Desmarque algumas e tente novamente.";
   }
   if (resp.status === 529 || resp.status >= 500) {

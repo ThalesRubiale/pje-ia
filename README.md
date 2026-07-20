@@ -100,6 +100,19 @@ investigação aberta, um agente com MCP é o caminho — o próprio painel suge
 
 **Atalhos:** `@` cita peças no campo · `Enter` envia · `Shift+Enter` quebra linha · com o popup `@` aberto: `↑↓` navega, `Enter`/`Tab` marca, `Esc` fecha · botão `⤢` expande o painel · `↺` inicia nova conversa.
 
+### 🏛️ Todos os tribunais, sem configurar nada
+
+A extensão funciona em **qualquer tribunal que rode PJe** (TJs, TRFs, TRTs — 1º ou 2º
+grau, incluindo o PJe na nuvem do CNJ em `*.cloud.pje.jus.br`), automaticamente: a
+permissão cobre todos os sites da Justiça (`https://*.jus.br`) desde a instalação.
+O botão **⚖️ Analisar com IA** aparece sozinho quando você abre a tela de autos
+digitais de um processo — em páginas que não são de autos (login, portais), a
+extensão não injeta nada.
+
+> A compatibilidade depende de o tribunal usar a tela de autos padrão do PJe
+> (linha do tempo + endpoint de download `pje-legacy`) — o caso da grande maioria
+> das instalações do CNJ.
+
 <p align="center">
   <img src="docs/mencao-arroba.jpg" alt="Popup de menção @: busca de peças com badges de contexto e ícones por categoria" width="720">
 </p>
@@ -130,7 +143,7 @@ flowchart LR
 
 - A chave da API fica **somente** no `chrome.storage.local` do seu navegador (não sincroniza, não passa por servidores de terceiros).
 - Os documentos marcados são enviados **diretamente à API da Anthropic** — nenhum outro serviço intermedia.
-- A extensão só roda no domínio do PJe configurado e não coleta telemetria.
+- A extensão só roda em sites da Justiça (`*.jus.br`), só injeta o painel em telas de autos do PJe e não coleta telemetria.
 
 > ⚠️ **Aviso legal:** autos judiciais podem conter dados pessoais e sigilosos. O uso da
 > extensão — e o envio de peças a um provedor de IA — é de responsabilidade do usuário,
@@ -141,7 +154,7 @@ flowchart LR
 
 - [x] Files API para processos muito volumosos
 - [x] Exportar a análise (copiar/.md/DOCX)
-- [ ] Suporte a outros tribunais que usam PJe (TJs/TRFs/TRTs) via configuração de domínio
+- [x] Suporte a outros tribunais que usam PJe (TJs/TRFs/TRTs) — automático em qualquer `*.jus.br`
 - [ ] Carregamento automático da timeline completa (peças fora da rolagem)
 - [ ] Compaction para conversas muito longas
 - [ ] Publicação na Chrome Web Store
