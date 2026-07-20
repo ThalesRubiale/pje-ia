@@ -67,6 +67,20 @@
 
   const docsCache = new Map(); // id -> {kind:"pdf",b64,size,pages,fileId?} | {kind:"text",text}
   let conversation = []; // [{role, content}]
+  let custoConversaUsd = 0; // soma dos custos estimados dos turnos (US$)
+
+  // Registra o custo de um turno concluído (chat ou .docx) no medidor do
+  // rodapé. O worker calcula o valor pela tabela de preços do modelo; a API
+  // devolve só as contagens de tokens (usage).
+  function registrarCusto(fim) {
+    if (!fim || fim.custoUsd == null) return;
+    custoConversaUsd += fim.custoUsd;
+    panel.setCusto({
+      turnoUsd: fim.custoUsd,
+      conversaUsd: custoConversaUsd,
+      usage: fim.usage,
+    });
+  }
   // Peças cujos blocos document JÁ estão no histórico desta conversa. Anexamos
   // só o DELTA a cada turno: reanexar tudo duplicaria as páginas/tokens no
   // request (o histórico não pode ser editado) e estourava os limites já no
@@ -145,6 +159,8 @@
   panel.onReset(() => {
     if (busy) return; // não zera no meio de uma resposta
     conversation = [];
+    custoConversaUsd = 0;
+    panel.setCusto(null);
     pecasNaConversa.clear();
     buscaNaConversa = false;
     clearTimeout(estTimer);
@@ -448,7 +464,12 @@
           finished = true;
           clearInterval(ping);
           port.disconnect();
-          resolve({ content: m.content || [], stopReason: m.stopReason || null });
+          resolve({
+            content: m.content || [],
+            stopReason: m.stopReason || null,
+            usage: m.usage || null,
+            custoUsd: m.custoUsd == null ? null : m.custoUsd,
+          });
         } else if (m.type === "error") {
           finished = true;
           clearInterval(ping);
@@ -843,6 +864,7 @@
           truncated = true;
         },
       }, opts);
+      registrarCusto(fim);
 
       if (acc.trim()) {
         // Preserva os blocos completos da resposta (não só o texto): a API
@@ -962,7 +984,7 @@
         null
       );
 
-      await stream(
+      const fimDoc = await stream(
         messages,
         {
           onDelta(delta) {
@@ -993,6 +1015,7 @@
         },
         "gerarDoc"
       );
+      registrarCusto(fimDoc);
 
       if (arquivo) {
         const idProc = PJE.getIdProcesso();

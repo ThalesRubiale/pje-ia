@@ -559,6 +559,13 @@
 /* botões travados durante uma resposta */
 .toolbar button:disabled { opacity: 0.45; cursor: default; }
 
+/* ---------- Custo estimado da conversa (US$) ---------- */
+.custo { display: flex; align-items: center; margin: 0 0 6px; cursor: help; }
+.custo-txt {
+  font-size: 10.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* ---------- Medidor de contexto da conversa ---------- */
 .gauge { display: flex; align-items: center; gap: 8px; margin: 2px 0 6px; cursor: help; }
 .gauge-bar {

@@ -134,6 +134,16 @@ Haiku) e `effort` (não suportado no Haiku).
   (desmarcar peças re-estima e limpa sozinha) ou em "Nova conversa". Compaction
   server-side foi avaliada e descartada: resumiria as próprias peças, matando as
   citações por página — a saída certa aqui é tirar/incluir peças do request.
+- **Custo por resposta** (`registrarCusto` em content.js + `.custo` no painel): a
+  API não devolve valor monetário — só o `usage` (tokens por categoria). O
+  acumulador SSE de `claude.js` captura o usage (entrada no `message_start`,
+  saída no `message_delta`); `executarTurno` (background.js) SOMA o usage de
+  todas as iterações `pause_turn` (um turno lógico = vários requests físicos) e
+  calcula `custoUsd` pela tabela `MODEL_CAPS[model].preco` (US$/1M tokens; cache
+  write 1,25× o input, cache read 0,1×; Sonnet 5 usa preço de tabela, não o
+  promocional). O `done` leva `usage`+`custoUsd`; o content acumula
+  `custoConversaUsd` (zera em "Nova conversa") e `panel.setCusto` mostra no
+  rodapé ("nesta resposta • na conversa", tooltip com o detalhamento).
 - **Prompt caching**: `montarBlocos()` marca o último bloco com
   `cache_control: {type: "ephemeral"}` e `stripOldCacheControl()` remove breakpoints
   antigos do histórico (a API aceita no máx. 4).

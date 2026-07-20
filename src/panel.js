@@ -219,6 +219,19 @@ var PjePanel = (function () {
       .replace(/[̀-ͯ]/g, "");
   }
 
+  // Formata um valor em dólares para exibição (vírgula decimal pt-BR).
+  function fmtUsd(v) {
+    if (v == null || !isFinite(v)) return "?";
+    if (v > 0 && v < 0.001) return "US$ 0,001";
+    return "US$ " + v.toFixed(v < 0.1 ? 3 : 2).replace(".", ",");
+  }
+  // Formata contagem de tokens de forma legível ("12,3 mil", "870").
+  function fmtMil(n) {
+    n = n || 0;
+    if (n < 1000) return String(n);
+    return (n / 1000).toFixed(n < 10000 ? 1 : 0).replace(".", ",") + " mil";
+  }
+
   function mount() {
     const host = document.createElement("div");
     host.id = "pje-ia-host";
@@ -283,6 +296,9 @@ var PjePanel = (function () {
                 <div class="gauge-bar"><div class="gauge-fill"></div></div>
                 <span class="gauge-txt"></span>
               </div>
+              <div class="custo" hidden>
+                <span class="custo-txt"></span>
+              </div>
               <div class="ctxbar" hidden></div>
               <div class="toolbar">
                 <span class="ctxlab">Ferramentas</span>
@@ -324,6 +340,8 @@ var PjePanel = (function () {
     const gaugeEl = $(".gauge");
     const gaugeFill = $(".gauge-fill");
     const gaugeTxt = $(".gauge-txt");
+    const custoEl = $(".custo");
+    const custoTxt = $(".custo-txt");
     const alertEl = $(".alertbar");
     const ctxbar = $(".ctxbar");
     const mentionEl = $(".mention");
@@ -1083,6 +1101,28 @@ var PjePanel = (function () {
             : "") +
           (info.pendentes ? " • " + info.pendentes + " peça(s) sem medir" : "");
         gaugeEl.hidden = false;
+      },
+      // Custo estimado da conversa (US$, calculado pelo worker a partir do
+      // usage da API × tabela de preços do modelo). null esconde e zera.
+      setCusto(info) {
+        if (!info) {
+          custoEl.hidden = true;
+          custoTxt.textContent = "";
+          return;
+        }
+        custoTxt.textContent =
+          "Custo estimado: ~" + fmtUsd(info.turnoUsd) + " nesta resposta • ~" +
+          fmtUsd(info.conversaUsd) + " na conversa";
+        const u = info.usage;
+        custoEl.title = u
+          ? "Estimativa pela tabela de preços da Anthropic (não inclui impostos). " +
+            "Última resposta: " +
+            fmtMil(u.input_tokens) + " tokens de entrada, " +
+            fmtMil((u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0)) +
+            " de cache (bem mais baratos) e " +
+            fmtMil(u.output_tokens) + " gerados."
+          : "Estimativa pela tabela de preços da Anthropic.";
+        custoEl.hidden = false;
       },
       // Barra de ALERTA persistente (contexto cheio): diferente do status
       // (transitório), fica visível até ser resolvida — com ação de recomeço.

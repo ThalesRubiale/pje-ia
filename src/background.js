@@ -13,7 +13,10 @@ import {
 } from "./claude.js";
 
 // Capacidades por modelo. Governam limites de páginas/contexto, as versões das
-// ferramentas web e a configuração de thinking/effort aceita por cada um.
+// ferramentas web, a configuração de thinking/effort aceita por cada um e o
+// preço (US$ por 1M de tokens, tabela pública da Anthropic — Sonnet 5 usa o
+// preço de tabela, não o promocional, para nunca subestimar). Cache de prompt:
+// gravação ≈ 1,25× o preço de input (TTL 5 min); leitura ≈ 0,1×.
 const MODEL_CAPS = {
   "claude-sonnet-5": {
     contextTokens: 1000000,
@@ -22,6 +25,7 @@ const MODEL_CAPS = {
     webFetch: "web_fetch_20260209",
     thinking: { type: "adaptive", display: "summarized" },
     effort: true,
+    preco: { in: 3, out: 15 },
   },
   "claude-opus-4-8": {
     contextTokens: 1000000,
@@ -30,6 +34,7 @@ const MODEL_CAPS = {
     webFetch: "web_fetch_20260209",
     thinking: { type: "adaptive", display: "summarized" },
     effort: true,
+    preco: { in: 5, out: 25 },
   },
   "claude-fable-5": {
     contextTokens: 1000000,
@@ -39,6 +44,7 @@ const MODEL_CAPS = {
     webFetch: "web_fetch_20250910",
     thinking: { type: "adaptive", display: "summarized" },
     effort: true,
+    preco: { in: 10, out: 50 },
   },
   "claude-haiku-4-5": {
     contextTokens: 200000,
@@ -47,8 +53,22 @@ const MODEL_CAPS = {
     webFetch: "web_fetch_20250910",
     thinking: null, // geração anterior: sem adaptive; omitimos thinking
     effort: false, // effort retorna erro no Haiku 4.5
+    preco: { in: 1, out: 5 },
   },
 };
+
+// Custo estimado (US$) de um usage acumulado, pela tabela de preços do modelo.
+// A API não devolve valor monetário — só as contagens de tokens por categoria.
+function custoUsdDe(usage, preco) {
+  if (!usage || !preco) return null;
+  return (
+    ((usage.input_tokens || 0) * preco.in +
+      (usage.cache_creation_input_tokens || 0) * preco.in * 1.25 +
+      (usage.cache_read_input_tokens || 0) * preco.in * 0.1 +
+      (usage.output_tokens || 0) * preco.out) /
+    1e6
+  );
+}
 function capsDe(model) {
   return MODEL_CAPS[model] || MODEL_CAPS["claude-sonnet-5"];
 }
@@ -175,6 +195,14 @@ async function executarTurno(port, payload) {
   let container = payload.container || null;
   let contentAcumulado = [];
   let stopReason = null;
+  // Um turno lógico pode ser vários requests físicos (continuações pause_turn):
+  // o custo correto é a SOMA dos usage de todas as iterações.
+  const usoTotal = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+  };
 
   for (let tentativa = 0; tentativa < 8; tentativa++) {
     const req = Object.assign({}, baseReq, { messages });
@@ -196,6 +224,9 @@ async function executarTurno(port, payload) {
 
     contentAcumulado = contentAcumulado.concat(final.content);
     stopReason = final.stopReason;
+    if (final.usage) {
+      for (const k of Object.keys(usoTotal)) usoTotal[k] += final.usage[k] || 0;
+    }
     // geração com skills: preserva o container para as continuações
     if (final.containerId && payload.container) {
       container = Object.assign({}, payload.container, { id: final.containerId });
@@ -213,7 +244,12 @@ async function executarTurno(port, payload) {
   if (stopReason === "refusal") {
     throw new Error("o modelo recusou responder este conteúdo");
   }
-  return { content: contentAcumulado, stopReason };
+  return {
+    content: contentAcumulado,
+    stopReason,
+    usage: usoTotal,
+    custoUsd: custoUsdDe(usoTotal, caps.preco),
+  };
 }
 
 // Extrai os file_ids de arquivos gerados pela execução de código
@@ -292,7 +328,13 @@ chrome.runtime.onConnect.addListener((port) => {
       : gerarDocumento(port, msg.payload)
     )
       .then((r) =>
-        postar(port, { type: "done", content: r.content, stopReason: r.stopReason })
+        postar(port, {
+          type: "done",
+          content: r.content,
+          stopReason: r.stopReason,
+          usage: r.usage || null,
+          custoUsd: r.custoUsd == null ? null : r.custoUsd,
+        })
       )
       .catch((e) =>
         postar(port, { type: "error", error: String((e && e.message) || e) })
