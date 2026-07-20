@@ -253,8 +253,38 @@
     if (!PJE.scrollAte(id)) {
       panel.setStatus(
         'A peça "' + metaDe(id).titulo +
-          '" não está visível na linha do tempo — role a timeline do processo para carregá-la.'
+          '" ainda não está na linha do tempo — use "⟳ Carregar todas as peças" (abaixo da lista) e tente de novo.'
       );
+    }
+  });
+
+  // "Carregar todas as peças": rola a timeline do PJe até o fim pelo usuário
+  // (o PJe carrega as peças sob demanda). O MutationObserver da timeline vai
+  // repovoando a lista sozinho durante o processo; aqui só cuidamos do
+  // feedback na dica. Sem guarda de busy: a rolagem não clica em nada (zero
+  // efeito JSF) — é o mesmo gesto que o usuário faria à mão a qualquer hora.
+  let carregandoTimeline = false;
+  panel.onCarregarTimeline(async () => {
+    if (carregandoTimeline) return;
+    carregandoTimeline = true;
+    try {
+      const res = await PJE.carregarTimelineCompleta((n) =>
+        panel.setTimelineTip({
+          texto: "Carregando a linha do tempo… " + n + " peça(s) na lista.",
+          carregando: true,
+        })
+      );
+      panel.setTimelineTip({
+        texto: res.completo
+          ? "Linha do tempo completa: " + res.total + " peça(s) na lista."
+          : res.total +
+            " peça(s) na lista — a linha do tempo pode ter mais; clique de novo para continuar.",
+      });
+    } catch (e) {
+      console.warn("[PJe IA] carregar timeline:", e);
+      panel.setTimelineTip(null); // volta ao padrão; o botão segue disponível
+    } finally {
+      carregandoTimeline = false;
     }
   });
 

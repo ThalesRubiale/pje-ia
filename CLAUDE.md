@@ -205,6 +205,20 @@ Haiku) e `effort` (não suportado no Haiku).
 
 ## Busca de peças e orientações (panel.js)
 
+- **"Carregar todas as peças"** (botão `.tip-load` na `.docs-tip` +
+  `PJE.carregarTimelineCompleta`): a timeline do PJe carrega as peças sob
+  demanda (scroll infinito) — em processos maiores, só o trecho já rolado
+  existe no DOM e, portanto, na lista do painel. O botão rola o container da
+  timeline programaticamente até o fim (scroller detectado por heurística:
+  primeiro ancestral com overflow rolável, senão a janela), aguardando cada
+  leva do servidor até a lista parar de crescer por 2 rodadas (teto 90 s);
+  o MutationObserver da timeline repovoa a lista ao vivo e, ao final, a
+  rolagem volta para onde estava. NÃO clica em nada (zero efeito A4J/JSF,
+  não toca na `activationChain` — por isso também não precisa de guarda de
+  `busy`); a rolagem programática dispara o evento scroll nativo que o lazy
+  load escuta. Feedback pela própria dica (`panel.setTimelineTip({texto,
+  carregando})`); reentrada bloqueada em content.js (`carregandoTimeline`).
+  A mensagem de falha do "ver na timeline" aponta para este botão.
 - **Busca na lista de peças** (`.docsearch`/`filtrarDocs`): filtra por título sem
   acentos (`row.dataset.busca = norm(titulo)`), só esconde/mostra linhas (`row.hidden`
   — depende da regra global `[hidden]{display:none !important}` do panel.css); os

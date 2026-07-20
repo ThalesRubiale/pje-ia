@@ -284,7 +284,10 @@ var PjePanel = (function () {
               <span class="doc-q-n" hidden></span>
             </div>
             <div class="doclist"></div>
-            <div class="docs-tip">Não achou uma peça? Role a linha do tempo do processo para carregá-la.</div>
+            <div class="docs-tip">
+              <span class="tip-txt">Não achou uma peça? A linha do tempo do PJe carrega aos poucos.</span>
+              <button type="button" class="tip-load" title="Rola a linha do tempo do processo automaticamente até o fim para carregar todas as peças na lista">⟳ Carregar todas as peças</button>
+            </div>
           </div>
           <div class="main">
             <div class="msgs"></div>
@@ -340,6 +343,8 @@ var PjePanel = (function () {
     const countEl = $(".count");
     const docQ = $(".doc-q");
     const docQN = $(".doc-q-n");
+    const tipTxt = $(".tip-txt");
+    const tipLoad = $(".tip-load");
     const msgs = $(".msgs");
     const ft = $(".ft");
     const statusEl = $(".status");
@@ -659,6 +664,22 @@ var PjePanel = (function () {
     });
     // eventos change dos checkboxes individuais borbulham até a lista
     doclist.addEventListener("change", syncSelection);
+
+    // -------------------------------------------------------------------------
+    // "Carregar todas as peças": a timeline do PJe carrega sob demanda; o
+    // botão pede ao content script para rolá-la até o fim pelo usuário. O
+    // estado visual (texto da dica + botão travado) é controlado por
+    // setTimelineTip — o content script é quem sabe o progresso real.
+    // -------------------------------------------------------------------------
+    const TIP_PADRAO = "Não achou uma peça? A linha do tempo do PJe carrega aos poucos.";
+    let carregarTLCb = null;
+    tipLoad.addEventListener("click", () => carregarTLCb && carregarTLCb());
+    function setTimelineTip(estado) {
+      const { texto = null, carregando = false } = estado || {};
+      tipTxt.textContent = texto || TIP_PADRAO;
+      tipLoad.disabled = carregando;
+      tipLoad.textContent = carregando ? "Carregando…" : "⟳ Carregar todas as peças";
+    }
 
     // -------------------------------------------------------------------------
     // "Ver na timeline": botão por peça (delegado — as rows são recriadas a
@@ -1244,6 +1265,12 @@ var PjePanel = (function () {
       onVerNaTimeline(cb) {
         verTimelineCb = cb;
       },
+      // Botão "Carregar todas as peças" da dica sob a lista.
+      onCarregarTimeline(cb) {
+        carregarTLCb = cb;
+      },
+      // Estado da dica: {texto, carregando}. Sem argumento volta ao padrão.
+      setTimelineTip,
       // Preview no hover: cb SÍNCRONO que devolve o conteúdo em cache ou null
       // ({kind:"pdf", b64, size, pages} | {kind:"text", text}) — nunca baixa.
       onPreview(cb) {

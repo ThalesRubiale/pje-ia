@@ -247,6 +247,62 @@ var PJE = (function () {
     return true;
   }
 
+  // A timeline carrega as peças sob demanda (scroll infinito): em processos
+  // maiores, só o trecho já rolado existe no DOM — e, portanto, na lista do
+  // painel. Esta função faz o trabalho pelo usuário: rola o container da
+  // timeline programaticamente até o fim, aguarda cada leva chegar do
+  // servidor e repete até a lista parar de crescer (ou 90 s). NÃO clica em
+  // nada — zero efeito na activationChain; é o mesmo gesto de rolagem que o
+  // usuário faria à mão (a rolagem programática dispara o evento scroll
+  // nativo que o lazy load do PJe escuta). Ao final, devolve a rolagem para
+  // onde estava. onProgress recebe o total de peças a cada rodada.
+  function acharScroller(tl) {
+    // O elemento que de fato rola varia por tribunal/tema: pode ser a própria
+    // div da timeline, um ancestral com overflow, ou a página inteira.
+    for (let el = tl; el && el !== document.body; el = el.parentElement) {
+      const cs = getComputedStyle(el);
+      if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 10)
+        return el;
+    }
+    return window;
+  }
+
+  async function carregarTimelineCompleta(onProgress) {
+    const tl = document.querySelector("#divTimeLine");
+    if (!tl) return { total: 0, completo: true };
+    const sc = acharScroller(tl);
+    const scrollAntes = sc === window ? window.scrollY : sc.scrollTop;
+    const contar = () => document.querySelectorAll("#divTimeLine a").length;
+    const inicio = Date.now();
+    const TETO_MS = 90000;
+    let total = contar();
+    let estaveis = 0; // rodadas seguidas sem crescimento — 2 encerram
+    while (estaveis < 2 && Date.now() - inicio < TETO_MS) {
+      if (sc === window) {
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      } else {
+        sc.scrollTop = sc.scrollHeight;
+      }
+      let cresceu = false;
+      for (let i = 0; i < 10 && !cresceu; i++) {
+        await sleep(300);
+        const agora = contar();
+        if (agora > total) {
+          total = agora;
+          cresceu = true;
+        }
+      }
+      if (onProgress) onProgress(listarDocumentos().length);
+      estaveis = cresceu ? 0 : estaveis + 1;
+    }
+    if (sc === window) window.scrollTo(0, scrollAntes);
+    else sc.scrollTop = scrollAntes;
+    return {
+      total: listarDocumentos().length,
+      completo: Date.now() - inicio < TETO_MS,
+    };
+  }
+
   // Converte Blob -> base64 puro (sem prefixo data: e sem quebras de linha).
   function blobToB64(blob) {
     return new Promise((resolve, reject) => {
@@ -260,5 +316,12 @@ var PJE = (function () {
     });
   }
 
-  return { getBase, getIdProcesso, listarDocumentos, baixar, scrollAte };
+  return {
+    getBase,
+    getIdProcesso,
+    listarDocumentos,
+    baixar,
+    scrollAte,
+    carregarTimelineCompleta,
+  };
 })();
