@@ -187,6 +187,30 @@
     refreshKey(); // re-renderiza CTA de chave se necessário
   });
 
+  // "Ver na timeline": rola a página do PJe até a peça com destaque temporário
+  // (PJE.scrollAte não clica em nada — zero efeito JSF, zero download).
+  panel.onVerNaTimeline((id) => {
+    if (!PJE.scrollAte(id)) {
+      panel.setStatus(
+        'A peça "' + metaDe(id).titulo +
+          '" não está visível na linha do tempo — role a timeline do processo para carregá-la.'
+      );
+    }
+  });
+
+  // Preview no hover: fornece o conteúdo JÁ em cache (síncrono, nunca baixa —
+  // download do PJe é serializado na sessão JSF e travaria a cada passada de
+  // mouse). Cache-miss devolve null e o painel oferece o botão "Baixar".
+  panel.onPreview((id) => docsCache.get(id) || null);
+
+  // Botão "Baixar" do preview: idempotente e compartilhado com o envio (a
+  // peça baixada aqui entra no docsCache que baixarSelecionadas reaproveita).
+  panel.onPreviewBaixar(async (id) => {
+    if (busy) throw new Error("aguarde a resposta atual terminar para baixar peças");
+    if (!docsCache.has(id)) docsCache.set(id, await PJE.baixar(id));
+    return docsCache.get(id);
+  });
+
   let docsIndex = new Map(); // id -> {id, titulo} (para chips e card de progresso)
   function refresh() {
     const docs = PJE.listarDocumentos();

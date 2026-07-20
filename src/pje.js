@@ -29,6 +29,15 @@ var PJE = (function () {
 
   const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
+  // Localiza o <a> de uma peça na timeline (usado pela ativação e pelo scroll).
+  function acharLink(id) {
+    return (
+      [...document.querySelectorAll("#divTimeLine a")].find((a) =>
+        (a.textContent || "").trim().startsWith(id)
+      ) || null
+    );
+  }
+
   // O endpoint de download é STATEFUL: o servidor só autoriza a peça que foi
   // "aberta" na sessão. Quando o download dá 404, disparamos o clique da peça
   // na timeline (A4J) para registrá-la e tentamos de novo. As ativações são
@@ -36,9 +45,7 @@ var PJE = (function () {
   let activationChain = Promise.resolve();
   function ativarPeca(id) {
     const run = async () => {
-      const link = [...document.querySelectorAll("#divTimeLine a")].find((a) =>
-        (a.textContent || "").trim().startsWith(id)
-      );
+      const link = acharLink(id);
       if (!link) throw new Error("peça " + id + " não está visível na linha do tempo");
       link.click();
       // aguarda o servidor registrar a peça na sessão (poll no próprio download)
@@ -201,6 +208,45 @@ var PJE = (function () {
     return { kind: "text", text };
   }
 
+  // Rola a timeline do PJe até a peça e a destaca com um flash temporário.
+  // NÃO clica no link (zero efeito A4J/JSF, não entra na activationChain) —
+  // é só navegação visual. Retorna false quando a peça não está na timeline
+  // (SPA pode não ter carregado o trecho); o chamador orienta o usuário.
+  // O estilo do flash é injetado no DOM da PÁGINA (o alvo vive fora do
+  // Shadow DOM do painel, onde o CSS da extensão não alcança).
+  function garantirEstiloFlash() {
+    if (document.getElementById("pje-ia-flash-style")) return;
+    const st = document.createElement("style");
+    st.id = "pje-ia-flash-style";
+    st.textContent =
+      "@keyframes pjeIaFlash{0%,100%{box-shadow:0 0 0 0 rgba(0,120,170,0);background:transparent}" +
+      "20%{box-shadow:0 0 0 5px rgba(0,120,170,.45);background:rgba(0,120,170,.16)}}" +
+      ".pje-ia-flash{animation:pjeIaFlash 1.1s ease-out 2;border-radius:4px}";
+    document.head.appendChild(st);
+  }
+
+  let flashEl = null;
+  let flashTimer = null;
+  function scrollAte(id) {
+    const link = acharLink(id);
+    if (!link) return false;
+    garantirEstiloFlash();
+    const alvo = link.closest("li, tr, .media") || link.parentElement || link;
+    if (flashEl) {
+      flashEl.classList.remove("pje-ia-flash");
+      clearTimeout(flashTimer);
+    }
+    alvo.scrollIntoView({ behavior: "smooth", block: "center" });
+    void alvo.offsetWidth; // reinicia a animação quando o alvo é o mesmo nó
+    alvo.classList.add("pje-ia-flash");
+    flashEl = alvo;
+    flashTimer = setTimeout(() => {
+      alvo.classList.remove("pje-ia-flash");
+      flashEl = null;
+    }, 2400);
+    return true;
+  }
+
   // Converte Blob -> base64 puro (sem prefixo data: e sem quebras de linha).
   function blobToB64(blob) {
     return new Promise((resolve, reject) => {
@@ -214,5 +260,5 @@ var PJE = (function () {
     });
   }
 
-  return { getBase, getIdProcesso, listarDocumentos, baixar };
+  return { getBase, getIdProcesso, listarDocumentos, baixar, scrollAte };
 })();

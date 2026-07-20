@@ -106,6 +106,28 @@
 .wrap.full .docs { width: 380px; }
 .wrap.full .msg { max-width: 70%; }
 
+/* Modo lateral: sidebar colada à direita, com a página do PJe visível e
+   clicável ao lado (sem backdrop — a regra do backdrop é só do .expanded).
+   O corpo continua em coluna: com ~440px de largura não cabe a coluna de
+   peças de 320px do modo expandido. */
+.wrap.lateral .panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  transform: none;
+  width: clamp(400px, 32vw, 480px);
+  max-width: 96vw;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+  border: none;
+  border-left: 1px solid var(--line);
+  box-shadow: -14px 0 40px rgba(5, 32, 46, 0.28);
+}
+.wrap.lateral .docs { max-height: 32vh; }
+
 /* ---------- Cabeçalho ---------- */
 .hd {
   display: flex;
@@ -206,6 +228,16 @@
 .docrow.cat-prova .d-nm { font-weight: 600; }
 .docrow.cat-decisao .d-nm { color: #7a5115; }
 .docrow.cat-outro .d-nm { color: #55606e; }
+
+/* Botão "ver na timeline" da row: só aparece no hover, para não poluir. */
+.d-ver {
+  flex: none; border: none; background: transparent; cursor: pointer;
+  color: #7f97a5; width: 20px; height: 20px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.docrow:hover .d-ver, .d-ver:focus-visible { opacity: 1; }
+.d-ver:hover { background: #d4e4ec; color: var(--pje-2); }
 
 .empty { color: var(--muted); padding: 8px 4px; font-size: 12.5px; }
 .docs-tip { font-size: 11px; color: var(--muted); padding-top: 6px; border-top: 1px dashed var(--line); margin-top: 6px; }
@@ -495,6 +527,50 @@
   font-size: 10px; font-weight: 700; color: #2e7d4f;
   background: #eaf4ee; border-radius: 999px; padding: 2px 8px;
 }
+/* ----- Preview de peça no hover (modos expandido e lateral) ----- */
+.preview {
+  position: fixed; z-index: 2147483647;
+  width: min(520px, 46vw); height: min(640px, 82vh);
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(5, 32, 46, 0.3);
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: rise 0.12s ease-out;
+}
+.preview.compact { height: auto; max-height: 60vh; }
+.preview-hd {
+  flex: none; display: flex; align-items: center; gap: 7px;
+  padding: 8px 12px; border-bottom: 1px solid var(--line);
+  font-size: 12px; color: var(--ink); background: var(--paper);
+}
+.preview-hd .d-dot { width: 8px; height: 8px; }
+.preview-hd .t {
+  flex: 1; min-width: 0; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.preview-bd { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.preview-bd embed { width: 100%; height: 100%; border: 0; flex: 1; }
+.preview-txt {
+  padding: 12px 14px; overflow-y: auto;
+  font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; color: var(--text);
+}
+.preview-miss {
+  padding: 18px 16px; text-align: center; color: var(--muted); font-size: 12.5px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.preview-dl, .preview-tab {
+  margin-top: 8px; border: 1px solid var(--pje); background: #fff;
+  color: var(--pje-2); border-radius: 8px; padding: 5px 12px;
+  font-size: 12px; font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.preview-dl:hover, .preview-tab:hover { background: #e9f2f8; }
+.preview-dl:disabled { opacity: 0.55; cursor: default; }
+.preview-ft {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-top: 1px dashed var(--line);
+  font-size: 10.5px; color: var(--muted);
+}
+.preview-ft .preview-tab { margin: 0 0 0 auto; padding: 3px 10px; font-size: 11px; }
+
 .inrow {
   display: flex; gap: 8px; align-items: flex-end;
   border: 1px solid var(--line); border-radius: 12px; padding: 6px 6px 6px 10px;
@@ -518,21 +594,25 @@
 .doclist::-webkit-scrollbar,
 .msgs::-webkit-scrollbar,
 .mention-list::-webkit-scrollbar,
+.preview-txt::-webkit-scrollbar,
 .chips::-webkit-scrollbar { width: 8px; }
 .doclist::-webkit-scrollbar-track,
 .msgs::-webkit-scrollbar-track,
 .mention-list::-webkit-scrollbar-track,
+.preview-txt::-webkit-scrollbar-track,
 .chips::-webkit-scrollbar-track { background: transparent; }
 .doclist::-webkit-scrollbar-thumb,
 .msgs::-webkit-scrollbar-thumb,
 .mention-list::-webkit-scrollbar-thumb,
+.preview-txt::-webkit-scrollbar-thumb,
 .chips::-webkit-scrollbar-thumb {
   background: #c7d6de; border-radius: 4px;
   border: 2px solid transparent; background-clip: content-box;
 }
 .doclist::-webkit-scrollbar-thumb:hover,
 .msgs::-webkit-scrollbar-thumb:hover,
-.mention-list::-webkit-scrollbar-thumb:hover { background-color: #a8c0ce; }
+.mention-list::-webkit-scrollbar-thumb:hover,
+.preview-txt::-webkit-scrollbar-thumb:hover { background-color: #a8c0ce; }
 
 /* ---------- Citações das peças (sobrescritos [n] + rodapé de fontes) ---------- */
 .msg .cit {

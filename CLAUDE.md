@@ -200,6 +200,45 @@ Haiku) e `effort` (não suportado no Haiku).
   PJe-CE (https://pjece.tecjustica.com/) como alternativa para autos volumosos com
   gerenciamento automático de contexto. Manter o link ao editar o hint.
 
+## Modos de layout, preview no hover e "ver na timeline" (panel.js/pje.js)
+
+- **Modos de layout** (classes no `.wrap`): flutuante → `expanded` (modal central com
+  backdrop) → `expanded full` (tela cheia) e o modo `lateral` (sidebar colada à
+  direita, página do PJe visível e CLICÁVEL ao lado — sem backdrop; `lateral` e
+  `expanded` são mutuamente exclusivas). Transições centralizadas em `aplicarModo()`
+  (não voltar aos handlers inline); a preferência persiste em
+  `chrome.storage.local.layoutModo` (tela cheia é transitória: persiste "expandido")
+  e é restaurada no `mount()`. Botão `.side` no header entre `.expand` e `.fs`.
+- **"Ver na timeline"** (botão `.d-ver` em cada docrow, aparece no hover):
+  `PJE.scrollAte(id)` rola a `#divTimeLine` até a peça com flash de ~2s — o estilo
+  do flash é injetado no DOM da PÁGINA (`#pje-ia-flash-style`), pois o alvo vive
+  fora do Shadow DOM. `scrollAte` NÃO clica no link (zero efeito A4J/JSF, não toca
+  na `activationChain`) e retorna `false` quando a peça não está na timeline (o
+  content mostra orientação no `.status`). No modal (expandido/cheia) o clique troca
+  para o lateral ANTES de rolar — a página estava coberta. O handler é DELEGADO no
+  `.doclist` e usa `preventDefault`+`stopPropagation`: a row é um `<label>`; sem
+  isso o clique alternaria o checkbox (fonte de verdade da seleção) e dispararia o
+  `change`. Callback: `panel.onVerNaTimeline(cb)`.
+- **Preview de peça no hover** (só nos modos expandido/cheia/lateral): popover ÚNICO
+  `.preview` no Shadow DOM, debounce de intenção de 400 ms, posicionado pela
+  `getBoundingClientRect` da row (direita quando cabe; senão esquerda — caso do
+  lateral). O conteúdo vem SEMPRE do `docsCache` via `panel.onPreview(cb)` (callback
+  SÍNCRONO) — **o hover NUNCA baixa nada**: o download do PJe é serializado na
+  sessão JSF (~5,6 s/peça + clique na timeline como efeito colateral) e passadas de
+  mouse travariam a extensão. Cache-miss mostra aviso + botão "Baixar"
+  (`panel.onPreviewBaixar` → `PJE.baixar`, bloqueado durante `busy`; alimenta o
+  MESMO `docsCache` que o envio reaproveita — prefetch de graça). PDF: no máximo UM
+  blob URL vivo, revogado em todo fechamento/re-render; acima de 15 MB não
+  decodifica no hover (o `atob` travaria a UI) — só metadados + "Abrir em nova aba"
+  (posse do URL transferida, revogação com 30 s de folga). Texto: `textContent`,
+  nunca innerHTML (conteúdo dos autos). CSP hostil da página (embed de `blob:`
+  barrado) é detectada pelo evento `securitypolicyviolation` no `document` → flag de
+  sessão + fallback com metadados ("Abrir em nova aba" escapa: navegação de topo não
+  é governada pela CSP da página). TODOS os listeners são delegados no `.doclist`
+  (as rows são recriadas a cada `setDocs`, que chama `hidePreview()`; `filtrarDocs`,
+  `aplicarModo`, scroll da lista e Esc também fecham — o Esc do preview faz
+  `stopPropagation` para não cancelar o modo docx junto).
+
 ## Popup de menção `@` (panel.js)
 
 Detecção por regex do token `@busca` antes do caret (`findMentionToken`); busca ignora

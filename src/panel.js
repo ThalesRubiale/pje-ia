@@ -159,13 +159,18 @@ var PjePanel = (function () {
 
   // Ícones SVG (evita depender de glifos unicode que podem faltar na fonte).
   // Cada ação do cabeçalho tem um desenho DISTINTO: baixar (seta na bandeja),
-  // nova conversa (balão com +), expandir (seta horizontal dupla), tela cheia
-  // (setas diagonais para os cantos) e fechar (X).
+  // nova conversa (balão com +), expandir (seta horizontal dupla), lateral
+  // (retângulo com coluna à direita), tela cheia (setas diagonais para os
+  // cantos) e fechar (X).
   const SVG = {
     fs:
       '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"/></svg>',
     expand:
       '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M5 5.5L2.5 8 5 10.5M11 5.5L13.5 8 11 10.5"/></svg>',
+    side:
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M9.8 2.5v11"/></svg>',
+    ver:
+      '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="4.2"/><path d="M8 1.4v2.6M8 12v2.6M1.4 8h2.6M12 8h2.6"/></svg>',
     close:
       '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
     reset:
@@ -258,6 +263,7 @@ var PjePanel = (function () {
           <button class="dl" title="Baixar a conversa em arquivo (.md)" aria-label="Baixar a conversa em arquivo">${SVG.download}</button>
           <button class="reset" title="Nova conversa (zera o chat e o contexto)" aria-label="Nova conversa">${SVG.reset}</button>
           <button class="expand" title="Painel largo (mostra as peças na lateral)" aria-label="Painel largo">${SVG.expand}</button>
+          <button class="side" title="Painel lateral (mantém o processo visível ao lado)" aria-label="Painel lateral">${SVG.side}</button>
           <button class="fs" title="Tela cheia" aria-label="Tela cheia">${SVG.fs}</button>
           <button class="close" title="Fechar o painel" aria-label="Fechar o painel">${SVG.close}</button>
         </div>
@@ -389,22 +395,59 @@ var PjePanel = (function () {
       wrap.classList.remove("pulse");
     }
     launcher.addEventListener("click", open);
-    closeBtn.addEventListener("click", () => wrap.classList.remove("open", "expanded", "full"));
-    expandBtn.addEventListener("click", () => {
-      wrap.classList.remove("full"); // sair da tela cheia volta ao expandido/normal
-      wrap.classList.toggle("expanded");
-    });
-    // Tela cheia: terceiro estágio (flutuante → expandido → tela cheia).
-    // Entrar implica o layout expandido (peças na lateral); sair volta ao expandido.
-    const fsBtn = $(".fs");
-    fsBtn.addEventListener("click", () => {
-      if (wrap.classList.contains("full")) {
-        wrap.classList.remove("full");
-      } else {
-        wrap.classList.add("expanded", "full");
+
+    // -------------------------------------------------------------------------
+    // Modos de layout (classes no .wrap): flutuante (nenhuma), expandido
+    // (modal central com backdrop), tela cheia (expanded+full) e lateral
+    // (sidebar à direita com a página visível — sem backdrop). "lateral" e
+    // "expanded" são mutuamente exclusivas. A preferência persiste em
+    // chrome.storage.local (tela cheia é transitória: persiste "expandido").
+    // -------------------------------------------------------------------------
+    function modoAtual() {
+      if (wrap.classList.contains("full")) return "cheia";
+      if (wrap.classList.contains("expanded")) return "expandido";
+      if (wrap.classList.contains("lateral")) return "lateral";
+      return "flutuante";
+    }
+    function aplicarModo(modo) {
+      hidePreview(); // a posição do popover fica inválida ao trocar o layout
+      wrap.classList.remove("expanded", "full", "lateral");
+      if (modo === "expandido") wrap.classList.add("expanded");
+      else if (modo === "cheia") wrap.classList.add("expanded", "full");
+      else if (modo === "lateral") wrap.classList.add("lateral");
+      try {
+        chrome.storage.local.set({ layoutModo: modo === "cheia" ? "expandido" : modo });
+      } catch {
+        /* contexto da extensão invalidado (recarga) — segue sem persistir */
       }
+    }
+    // Restaura a preferência de layout (vale a partir do próximo open()).
+    try {
+      chrome.storage.local.get(["layoutModo"], (v) => {
+        if (v && v.layoutModo === "lateral") wrap.classList.add("lateral");
+        else if (v && v.layoutModo === "expandido") wrap.classList.add("expanded");
+      });
+    } catch {
+      /* sem storage (harness de teste): fica no flutuante */
+    }
+
+    closeBtn.addEventListener("click", () => {
+      hidePreview();
+      wrap.classList.remove("open", "expanded", "full", "lateral");
     });
-    backdrop.addEventListener("click", () => wrap.classList.remove("expanded", "full"));
+    expandBtn.addEventListener("click", () =>
+      aplicarModo(modoAtual() === "expandido" ? "flutuante" : "expandido")
+    );
+    // Tela cheia: entrar implica o layout expandido; sair volta ao expandido.
+    const fsBtn = $(".fs");
+    fsBtn.addEventListener("click", () =>
+      aplicarModo(modoAtual() === "cheia" ? "expandido" : "cheia")
+    );
+    const sideBtn = $(".side");
+    sideBtn.addEventListener("click", () =>
+      aplicarModo(modoAtual() === "lateral" ? "flutuante" : "lateral")
+    );
+    backdrop.addEventListener("click", () => aplicarModo("flutuante"));
 
     let resetCb = null;
     resetBtn.addEventListener("click", () => {
@@ -614,11 +657,270 @@ var PjePanel = (function () {
     doclist.addEventListener("change", syncSelection);
 
     // -------------------------------------------------------------------------
+    // "Ver na timeline": botão por peça (delegado — as rows são recriadas a
+    // cada setDocs). O content script rola a página do PJe até o documento.
+    // -------------------------------------------------------------------------
+    let verTimelineCb = null;
+    doclist.addEventListener("click", (e) => {
+      const btn = e.target.closest(".d-ver");
+      if (!btn) return;
+      // A row é um <label>: sem o preventDefault o clique alternaria o
+      // checkbox (fonte de verdade da seleção) e dispararia o change delegado.
+      e.preventDefault();
+      e.stopPropagation();
+      const row = btn.closest(".docrow");
+      if (!row || !verTimelineCb) return;
+      hidePreview();
+      // No modal (expandido/cheia) a página fica coberta: troca para o modo
+      // lateral antes de rolar, para o usuário VER o documento destacado.
+      if (wrap.classList.contains("expanded")) aplicarModo("lateral");
+      const id = row.dataset.id;
+      // setTimeout (não rAF: o Chrome suprime rAF em janela ocluída) — dá
+      // tempo do layout assentar antes de o content script rolar a página.
+      setTimeout(() => verTimelineCb(id), 50);
+    });
+
+    // -------------------------------------------------------------------------
+    // Preview de peça no hover (só nos modos expandido/cheia e lateral, onde
+    // há espaço). O conteúdo vem SEMPRE do cache do content script (callback
+    // síncrono) — o hover NUNCA baixa nada: o download do PJe é serializado
+    // na sessão JSF e levaria segundos, travando a extensão. Cache-miss
+    // mostra aviso + botão "Baixar" (gesto explícito). Um único popover e no
+    // máximo UM blob URL vivos por vez; revogação a cada fechamento.
+    // -------------------------------------------------------------------------
+    const previewEl = document.createElement("div");
+    previewEl.className = "preview";
+    previewEl.hidden = true;
+    wrap.appendChild(previewEl);
+
+    let previewCb = null; // (id) -> {kind:"pdf"|"text", ...} | null (síncrono)
+    let previewDlCb = null; // (id) -> Promise<info> — só no clique em "Baixar"
+    let previewId = null; // peça exibida no momento
+    let previewUrl = null; // blob URL vivo (no máximo um)
+    let previewTimer = null; // debounce de intenção do hover
+    let previewHideTimer = null; // fechamento tolerante (mouse indo ao popover)
+    let previewCspBloqueado = false; // página barrou embed de blob: PDF (CSP)
+    // Download via botão "Baixar" em andamento: a ativação JSF do PJe mexe na
+    // timeline → MutationObserver → setDocs, que fecharia o popover no meio.
+    // A flag suprime SÓ esse fechamento automático (Esc/scroll seguem valendo).
+    let previewDlPendente = false;
+    const PREVIEW_HOVER_MS = 400;
+    const PREVIEW_MAX_HOVER_B = 15 * 1024 * 1024; // atob de b64 maior travaria a UI
+
+    function limparPreviewUrl() {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
+      }
+    }
+    function hidePreview() {
+      clearTimeout(previewTimer);
+      clearTimeout(previewHideTimer);
+      previewId = null;
+      if (!previewEl.hidden) {
+        previewEl.hidden = true;
+        previewEl.innerHTML = ""; // solta o <embed> (o viewer de PDF retém memória)
+      }
+      limparPreviewUrl();
+    }
+    function b64ParaBlobUrl(b64) {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    }
+    function fmtBytes(n) {
+      if (!n) return "? KB";
+      return n >= 1048576
+        ? (n / 1048576).toFixed(1).replace(".", ",") + " MB"
+        : Math.max(1, Math.round(n / 1024)) + " KB";
+    }
+
+    function renderPreview(row, info) {
+      const id = row.dataset.id;
+      const d = allDocs.find((x) => x.id === id);
+      limparPreviewUrl();
+      previewEl.innerHTML = "";
+      previewEl.classList.remove("compact");
+
+      const hd = document.createElement("div");
+      hd.className = "preview-hd " + (d ? categoriaDe(d.titulo) : "cat-outro");
+      hd.innerHTML =
+        '<span class="d-dot"></span><span class="t" title="' +
+        escapeHtml(d ? d.titulo : id) + '">' +
+        escapeHtml(d ? tituloCurto(d.titulo) : id) + "</span>";
+      previewEl.appendChild(hd);
+
+      const bd = document.createElement("div");
+      bd.className = "preview-bd";
+      previewEl.appendChild(bd);
+
+      if (!info) {
+        // cache-miss: nada de download automático — só sob gesto explícito
+        previewEl.classList.add("compact");
+        const box = document.createElement("div");
+        box.className = "preview-miss";
+        box.innerHTML =
+          "<span>Peça ainda não carregada nesta conversa.</span>" +
+          '<button type="button" class="preview-dl">Baixar peça</button>';
+        const btn = box.querySelector(".preview-dl");
+        const soAviso = (t) => (box.innerHTML = "<span>" + escapeHtml(t) + "</span>");
+        btn.addEventListener("click", async () => {
+          if (!previewDlCb) return;
+          btn.disabled = true;
+          btn.textContent = "Baixando…";
+          previewDlPendente = true;
+          try {
+            const baixado = await previewDlCb(id);
+            // re-renderiza só se o popover ainda mostra ESTA peça
+            if (previewId !== id) return;
+            if (baixado) {
+              renderPreview(row, baixado);
+              // o conteúdo pode ter crescido (aviso → PDF): reposiciona na
+              // row ATUAL (o setDocs pode ter recriado a lista nesse meio-tempo)
+              const anc = doclist.querySelector(
+                '.docrow[data-id="' + CSS.escape(id) + '"]'
+              );
+              if (anc) posicionarPreview(anc);
+            } else soAviso("Não foi possível baixar a peça.");
+          } catch (err) {
+            if (previewId === id)
+              soAviso("Falha ao baixar: " + String((err && err.message) || err));
+          } finally {
+            previewDlPendente = false;
+          }
+        });
+        bd.appendChild(box);
+        return;
+      }
+
+      if (info.kind === "text") {
+        previewEl.classList.add("compact");
+        const t = document.createElement("div");
+        t.className = "preview-txt";
+        t.textContent = info.text; // NUNCA innerHTML — conteúdo dos autos
+        bd.appendChild(t);
+        return;
+      }
+
+      // PDF em cache
+      const pesado = (info.size || 0) > PREVIEW_MAX_HOVER_B;
+      if (previewCspBloqueado || pesado) {
+        previewEl.classList.add("compact");
+        const box = document.createElement("div");
+        box.className = "preview-miss";
+        box.textContent = pesado
+          ? "PDF grande — use “Abrir em nova aba” para visualizar."
+          : "A pré-visualização embutida foi bloqueada pela política de segurança desta página.";
+        bd.appendChild(box);
+      } else {
+        previewUrl = b64ParaBlobUrl(info.b64);
+        const em = document.createElement("embed");
+        em.type = "application/pdf";
+        em.src = previewUrl + "#toolbar=0";
+        bd.appendChild(em);
+      }
+      const ft = document.createElement("div");
+      ft.className = "preview-ft";
+      ft.innerHTML =
+        "<span>" + (info.pages || 1) + " página(s) · " + fmtBytes(info.size) + "</span>" +
+        '<button type="button" class="preview-tab">Abrir em nova aba</button>';
+      ft.querySelector(".preview-tab").addEventListener("click", () => {
+        // posse do URL vai para a nova aba; revoga com folga para ela carregar
+        const u = b64ParaBlobUrl(info.b64);
+        window.open(u, "_blank");
+        setTimeout(() => URL.revokeObjectURL(u), 30000);
+      });
+      previewEl.appendChild(ft);
+    }
+
+    // Abre à direita da row quando cabe (expandido: docs é a coluna esquerda);
+    // senão à esquerda (lateral: painel colado à borda direita da janela).
+    function posicionarPreview(row) {
+      const r = row.getBoundingClientRect();
+      const W = Math.min(520, window.innerWidth * 0.46);
+      const cabeDireita = window.innerWidth - r.right >= W + 24;
+      previewEl.style.left = cabeDireita
+        ? Math.round(r.right + 12) + "px"
+        : Math.round(Math.max(8, r.left - W - 12)) + "px";
+      const H = previewEl.offsetHeight || Math.min(640, window.innerHeight * 0.82);
+      previewEl.style.top =
+        Math.round(
+          Math.min(Math.max(8, r.top - 40), Math.max(8, window.innerHeight - H - 8))
+        ) + "px";
+    }
+
+    function showPreview(row) {
+      if (!previewCb || !row.isConnected) return;
+      previewId = row.dataset.id;
+      renderPreview(row, previewCb(previewId));
+      posicionarPreview(row); // 1º passe: posição estimada, ainda oculto
+      previewEl.hidden = false;
+      posicionarPreview(row); // 2º passe: ajusta com a altura real (.compact)
+    }
+
+    function agendarFecharPreview() {
+      clearTimeout(previewHideTimer);
+      previewHideTimer = setTimeout(() => {
+        if (!previewEl.matches(":hover") && !doclist.matches(":hover")) hidePreview();
+      }, 250);
+    }
+
+    // mouseover/mouseout borbulham (mouseenter não) — delegação nas rows
+    doclist.addEventListener("mouseover", (e) => {
+      if (!wrap.classList.contains("expanded") && !wrap.classList.contains("lateral"))
+        return;
+      const row = e.target.closest(".docrow");
+      if (!row || !previewCb) return;
+      clearTimeout(previewHideTimer);
+      if (row.dataset.id === previewId && !previewEl.hidden) return;
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(() => showPreview(row), PREVIEW_HOVER_MS);
+    });
+    doclist.addEventListener("mouseout", (e) => {
+      const row = e.target.closest(".docrow");
+      if (row && !(e.relatedTarget && row.contains(e.relatedTarget)))
+        clearTimeout(previewTimer);
+      agendarFecharPreview();
+    });
+    previewEl.addEventListener("mouseenter", () => clearTimeout(previewHideTimer));
+    previewEl.addEventListener("mouseleave", agendarFecharPreview);
+    // rolar a lista invalida a âncora do popover
+    doclist.addEventListener("scroll", hidePreview, { passive: true });
+    // Esc fecha só o preview (stopPropagation: não derruba o modo docx junto)
+    root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !previewEl.hidden) {
+        hidePreview();
+        e.stopPropagation();
+      }
+    });
+    // CSP da página pode barrar <embed> de blob: PDF — detecção real pelo
+    // evento de violação (dispara no document dono, mesmo com Shadow DOM).
+    document.addEventListener("securitypolicyviolation", (e) => {
+      if (
+        String(e.blockedURI || "").startsWith("blob") &&
+        /object-src|frame-src|default-src|plugin/.test(String(e.violatedDirective || ""))
+      ) {
+        previewCspBloqueado = true;
+        if (previewId && !previewEl.hidden) {
+          const row = doclist.querySelector(
+            '.docrow[data-id="' + CSS.escape(previewId) + '"]'
+          );
+          const info = previewCb && previewCb(previewId);
+          if (row && info && info.kind === "pdf") renderPreview(row, info);
+        }
+      }
+    });
+
+    // -------------------------------------------------------------------------
     // Busca de peças: filtra a lista pelo título (sem acentos, via norm()).
     // Só esconde/mostra linhas — os checkboxes continuam sendo a fonte de
     // verdade da seleção (peça marcada e filtrada segue marcada).
     // -------------------------------------------------------------------------
     function filtrarDocs() {
+      // rows podem sumir/mudar de lugar sob o popover (exceto durante o
+      // download do próprio preview — o refresh da timeline passa por aqui)
+      if (!previewDlPendente) hidePreview();
       const q = norm(docQ.value.trim());
       let visiveis = 0;
       for (const row of doclist.querySelectorAll(".docrow")) {
@@ -934,6 +1236,19 @@ var PjePanel = (function () {
       onSelectionChange(cb) {
         selChangeCb = cb;
       },
+      // Clique no botão "ver na timeline" de uma peça (recebe o id).
+      onVerNaTimeline(cb) {
+        verTimelineCb = cb;
+      },
+      // Preview no hover: cb SÍNCRONO que devolve o conteúdo em cache ou null
+      // ({kind:"pdf", b64, size, pages} | {kind:"text", text}) — nunca baixa.
+      onPreview(cb) {
+        previewCb = cb;
+      },
+      // Botão "Baixar" do preview em cache-miss: cb assíncrono (PJE.baixar).
+      onPreviewBaixar(cb) {
+        previewDlCb = cb;
+      },
       setConfigured,
       clearMessages() {
         msgs.innerHTML = "";
@@ -948,6 +1263,10 @@ var PjePanel = (function () {
         showEmptyHint();
       },
       setDocs(docs) {
+        // rows serão recriadas — fecha o popover (nó morto), SALVO durante o
+        // download do preview: a ativação JSF do PJe re-dispara setDocs e
+        // fecharia o popover "Baixando…" na cara do usuário
+        if (!previewDlPendente) hidePreview();
         const cur = new Set(getSelected());
         allDocs = docs.slice();
         doclist.innerHTML = "";
@@ -956,13 +1275,16 @@ var PjePanel = (function () {
           const row = document.createElement("label");
           row.className = "docrow " + categoriaDe(d.titulo);
           row.dataset.busca = norm(d.titulo); // índice da busca (sem acentos)
+          row.dataset.id = d.id; // usado pelo preview e pelo "ver na timeline"
           row.innerHTML =
             `<input type="checkbox" value="${escapeHtml(d.id)}">` +
             '<span class="d-dot" aria-hidden="true"></span>' +
             `<span class="d-t" title="${escapeHtml(d.titulo)}">` +
             `<span class="d-nm">${escapeHtml(p.nome)}</span>` +
             (p.id ? `<span class="d-id">${p.id}</span>` : "") +
-            "</span>";
+            "</span>" +
+            '<button type="button" class="d-ver" title="Ver esta peça na linha do tempo do processo" aria-label="Localizar esta peça na linha do tempo">' +
+            SVG.ver + "</button>";
           if (cur.has(d.id)) row.querySelector("input").checked = true;
           doclist.appendChild(row);
         }
