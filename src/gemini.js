@@ -235,6 +235,18 @@ export async function* streamGemini(req) {
     }
   }
 
+  // Stream encerrado SEM o interaction.completed: conexão caiu de forma
+  // "limpa" no meio do turno (proxy, rede) — a resposta parcial não pode
+  // passar por completa. Erro re-tentável: o executarTurno re-tenta o mesmo
+  // request com backoff (o prefixo está no implicit cache, custa pouco).
+  if (!interacaoFinal) {
+    const err = new Error(
+      "o stream da API do Gemini terminou sem o evento de conclusão — tente de novo"
+    );
+    err.retryable = true;
+    throw err;
+  }
+
   // Steps oficiais: os do interaction.completed quando presentes; senão os
   // acumulados dos deltas.
   const oficiais =

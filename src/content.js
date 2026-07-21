@@ -386,7 +386,7 @@
   // Botão "Baixar" do preview: idempotente e compartilhado com o envio (a
   // peça baixada aqui entra no docsCache que baixarSelecionadas reaproveita).
   panel.onPreviewBaixar(async (id) => {
-    if (busy) throw new Error("aguarde a resposta atual terminar para baixar peças");
+    if (busy) throw new Error("aguarde a resposta atual terminar para abrir a peça");
     if (!docsCache.has(id)) docsCache.set(id, await PJE.baixar(id));
     return docsCache.get(id);
   });

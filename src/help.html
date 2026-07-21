@@ -63,6 +63,11 @@
         background: var(--warn-bg); border: 1px solid #f0dcae; border-radius: 10px;
         padding: 12px 16px; font-size: 13.5px; color: var(--warn);
       }
+      .card table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+      .card th, .card td { border: 1px solid var(--line); padding: 6px 9px; text-align: left; vertical-align: top; }
+      .card th { background: #f2f7fa; font-weight: 700; }
+      .card ol { margin: 8px 0 0; padding-left: 22px; font-size: 14.5px; }
+      .card ol li { margin: 6px 0; }
     </style>
   </head>
   <body>
@@ -169,7 +174,44 @@
         fica indisponível — esses dois recursos usam a API da Anthropic.</em></p>
       </div>
 
-      <h1 class="serif">Como usar bem o chat (contexto e custo)</h1>
+      <h1 class="serif" id="modelos">Qual modelo escolher?</h1>
+      <div class="card">
+        <p>O selo na barra de ferramentas do chat mostra sempre o modelo e o nível de
+        raciocínio <strong>ativos</strong>. Preços em US$ por 1 milhão de tokens
+        (entrada / saída) — o cache automático reduz a entrada repetida em ~90% nos
+        turnos seguintes da mesma conversa.</p>
+        <table>
+          <tr><th>Modelo</th><th>Janela / PDF</th><th>Preço</th><th>Perfil</th></tr>
+          <tr><td><strong>Claude Haiku 4.5</strong> (padrão)</td><td>200 mil tokens / 100 págs.</td><td>1 / 5</td><td>Rápido e barato; todos os recursos (citações [n], .docx). Melhor ponto de partida.</td></tr>
+          <tr><td><strong>Claude Sonnet 5</strong></td><td>1M tokens / 600 págs.</td><td>3 / 15</td><td>Autos volumosos com todos os recursos; mais lento e caro que o Haiku.</td></tr>
+          <tr><td><strong>Claude Opus 4.8</strong></td><td>1M tokens / 600 págs.</td><td>5 / 25</td><td>Qualidade superior para análises delicadas.</td></tr>
+          <tr><td><strong>Claude Fable 5</strong></td><td>1M tokens / 600 págs.</td><td>10 / 50</td><td>O mais capaz — e o mais caro e lento. Para casos excepcionais.</td></tr>
+          <tr><td><strong>Gemini 3.6 Flash</strong></td><td>1M tokens / 1000 págs.</td><td>1,50 / 7,50</td><td>Rápido, multimodal e com ótimo custo para autos grandes. Citações no texto; sem .docx.</td></tr>
+          <tr><td><strong>Gemini 3.5 Flash-Lite</strong></td><td>1M tokens / 1000 págs.</td><td>0,30 / 2,50</td><td>O mais barato e veloz de todos — ideal para triagens e resumos rápidos. Citações no texto; sem .docx.</td></tr>
+        </table>
+        <p style="margin-top:10px"><em>Regra prática: Haiku para o dia a dia; Gemini 3.5
+        Flash-Lite quando o custo importa mais; Sonnet 5 ou Gemini 3.6 Flash para autos
+        volumosos; Opus/Fable quando a qualidade da análise vale o preço.</em></p>
+      </div>
+
+      <h1 class="serif">Como usar bem o chat (fluxo recomendado)</h1>
+      <div class="card">
+        <ol>
+          <li>Abra os autos no PJe e clique em <strong>⚖️ Analisar com IA</strong>.</li>
+          <li>Clique em <strong>⟳ Carregar todas as peças</strong> (abaixo da lista): o PJe
+          só carrega os documentos conforme a linha do tempo é rolada — sem esse passo, a
+          lista pode estar incompleta.</li>
+          <li>Marque as peças relevantes — o atalho <strong>principais</strong> seleciona de uma
+          vez as destacadas por categoria (decisões, audiências, petições, provas); a busca e o
+          <strong>@</strong> ajudam a achar peças pelo nome.</li>
+          <li>Pergunte. Ligue <strong>🔍 Jurisprudência</strong> se quiser fundamentação em
+          fontes oficiais; use <strong>📄 Gerar .docx</strong> (modelos Claude) para relatórios
+          em Word.</li>
+          <li>Siga a conversa: <strong>adicionar</strong> peças no meio é barato; para
+          <strong>remover</strong> várias ou mudar de assunto, prefira ⟲ Nova conversa.</li>
+        </ol>
+      </div>
+
       <div class="card">
         <ul>
           <li><strong>Comece marcando só as peças relevantes</strong> para a pergunta — cada peça

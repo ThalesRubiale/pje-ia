@@ -175,7 +175,8 @@
   font-size: 13px; margin-bottom: 8px; color: var(--ink);
 }
 .docs-hd strong { font-family: Georgia, serif; font-weight: 700; }
-.docs-hd .all { font-weight: 500; color: var(--muted); cursor: pointer; font-size: 12px; }
+.docs-hd .all { font-weight: 500; color: var(--muted); cursor: pointer; font-size: 12px; white-space: nowrap; }
+.sel-opts { display: flex; gap: 10px; align-items: center; }
 .count { font-size: 11px; color: var(--muted); margin-left: 6px; }
 /* legenda das categorias — só no modo expandido, onde há espaço */
 .legend { display: none; }

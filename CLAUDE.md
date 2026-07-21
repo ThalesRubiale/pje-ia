@@ -121,7 +121,10 @@ quebrar:
   `aplicarCapsNaUI` liga `ALERTA_TROCA_PROVEDOR` na troca do modelo e o envio tem
   guarda dura; "Nova conversa" (ou voltar ao modelo anterior) resolve.
 - **Sem pause_turn no Gemini**: o loop de continuações de `executarTurno` sai na 1ª
-  iteração; retry transitório (429/5xx, `err.retryable`) funciona igual. Cache: só
+  iteração; retry transitório (429/5xx, `err.retryable`) funciona igual. Stream que
+  termina SEM `interaction.completed` (queda "limpa" de conexão) e status
+  `failed/cancelled` LANÇAM erro retryable — resposta parcial nunca passa por
+  completa. Cache: só
   implicit caching (automático) — `cache_control` não é gravado nos blocos quando o
   provedor é gemini (e gemini.js nem copiaria o campo).
 - **Config**: chave em `chrome.storage.local.geminiApiKey` (a `apiKey` continua sendo a
@@ -297,7 +300,10 @@ quebrar:
   acentos (`row.dataset.busca = norm(titulo)`), só esconde/mostra linhas (`row.hidden`
   — depende da regra global `[hidden]{display:none !important}` do panel.css); os
   checkboxes seguem sendo a fonte de verdade (peça marcada e filtrada continua
-  marcada). "todas" respeita o filtro ativo (marca/desmarca só as visíveis). Esc
+  marcada). "todas" respeita o filtro ativo (marca/desmarca só as visíveis). O
+  checkbox "principais" (`.chk-main`) marca/desmarca só as peças com categoria
+  destacada (`.docrow:not(.cat-outro)`) — mesmo contrato do "todas": respeita o
+  filtro e o estado dele é recalculado em `syncSelection`. Esc
   limpa; `setDocs` re-aplica o filtro após re-renderizar a lista.
 - **Orientações no estado vazio** (`showEmptyHint`): box `.guia` explica que NÃO é
   um agente autônomo (seleciona peças → envia solicitação), o limite de contexto
@@ -332,7 +338,8 @@ quebrar:
   lateral). O conteúdo vem SEMPRE do `docsCache` via `panel.onPreview(cb)` (callback
   SÍNCRONO) — **o hover NUNCA baixa nada**: o download do PJe é serializado na
   sessão JSF (~5,6 s/peça + clique na timeline como efeito colateral) e passadas de
-  mouse travariam a extensão. Cache-miss mostra aviso + botão "Baixar"
+  mouse travariam a extensão. Cache-miss mostra aviso + botão "Abrir documento"
+  (rótulo de ABRIR, não "baixar" — decisão de UX; internamente segue sendo download)
   (`panel.onPreviewBaixar` → `PJE.baixar`, bloqueado durante `busy`; alimenta o
   MESMO `docsCache` que o envio reaproveita — prefetch de graça). PDF: no máximo UM
   blob URL vivo, revogado em todo fechamento/re-render; acima de 15 MB não

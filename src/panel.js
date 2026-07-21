@@ -271,7 +271,10 @@ var PjePanel = (function () {
           <div class="docs">
             <div class="docs-hd">
               <span><strong>Peças do processo</strong><span class="count"></span></span>
-              <label class="all"><input type="checkbox" class="chk-all"> todas</label>
+              <span class="sel-opts">
+                <label class="all" title="Marca só as peças destacadas por categoria — decisões, audiências, petições e provas (as coloridas na lista): normalmente as mais relevantes para a análise do processo."><input type="checkbox" class="chk-main"> principais</label>
+                <label class="all" title="Marca todas as peças da lista (respeita a busca ativa)"><input type="checkbox" class="chk-all"> todas</label>
+              </span>
             </div>
             <div class="legend" aria-hidden="true">
               <span><i class="l-dot cat-decisao"></i>decisões</span>
@@ -285,7 +288,7 @@ var PjePanel = (function () {
             </div>
             <div class="doclist"></div>
             <div class="docs-tip">
-              <span class="tip-txt">Não achou uma peça? A linha do tempo do PJe carrega aos poucos.</span>
+              <span class="tip-txt">⚠️ O PJe só carrega as peças conforme a linha do tempo é rolada — esta lista pode estar incompleta.</span>
               <button type="button" class="tip-load" title="Rola a linha do tempo do processo automaticamente até o fim para carregar todas as peças na lista">⟳ Carregar todas as peças</button>
             </div>
           </div>
@@ -342,6 +345,7 @@ var PjePanel = (function () {
     const docsBox = $(".docs");
     const doclist = $(".doclist");
     const chkAll = $(".chk-all");
+    const chkMain = $(".chk-main");
     const countEl = $(".count");
     const docQ = $(".doc-q");
     const docQN = $(".doc-q-n");
@@ -373,13 +377,23 @@ var PjePanel = (function () {
       hintEl.className = "hint-empty";
       hintEl.innerHTML =
         '<span class="big">Como posso ajudar?</span>' +
-        'Marque as peças na lista (use a <b>busca</b>) ou digite <b>@</b> no campo abaixo — ' +
-        'ex.: <em>"Resuma a inicial e a réplica"</em>.' +
+        'Marque as peças na lista — pela <b>busca</b>, pelo atalho <b>principais</b> ' +
+        '(peças destacadas por categoria) ou digitando <b>@</b> no campo — e pergunte: ' +
+        '<em>"Resuma a inicial e a réplica"</em>, <em>"Monte a linha do tempo dos atos"</em>. ' +
+        'Nas ferramentas abaixo: <b>🔍 Jurisprudência</b> pesquisa em fontes oficiais e ' +
+        '<b>📄 Gerar .docx</b> entrega um relatório em Word (modelos Claude); o selo ao ' +
+        'lado mostra o <b>modelo ativo</b>.' +
         '<div class="guia">' +
         "<p><b>Como funciona:</b> este assistente <b>não é um agente autônomo</b> " +
         "(como o Claude Code) — ele não navega no processo sozinho. Você seleciona " +
         "as peças, envia a solicitação, e a resposta usa somente os documentos marcados. " +
         "Entre uma pergunta e outra, dá para marcar e desmarcar peças à vontade.</p>" +
+        "<p><b>⚠️ A lista de peças pode vir incompleta:</b> o PJe só carrega os " +
+        "documentos conforme a linha do tempo é rolada. Antes de procurar uma peça " +
+        "antiga, clique em <b>⟳ Carregar todas as peças</b> (abaixo da lista) — a " +
+        "extensão rola a linha do tempo por você. O atalho <b>principais</b>, no topo " +
+        "da lista, marca de uma vez as peças destacadas por categoria (decisões, " +
+        "audiências, petições e provas).</p>" +
         "<p><b>Contexto limitado:</b> a conversa inteira (peças + perguntas + respostas) " +
         "precisa caber na janela do modelo — até <b>200 mil tokens</b> no modelo padrão " +
         "(Haiku 4.5, rápido e barato). Para autos volumosos, escolha um modelo com janela " +
@@ -387,6 +401,13 @@ var PjePanel = (function () {
         "configuração da extensão. " +
         "O medidor acima do campo mostra o quanto já foi usado; se não couber, " +
         "analise por partes, desmarcando peças para liberar espaço.</p>" +
+        "<p><b>Modelos disponíveis</b> (troque nas opções — o selo na barra de " +
+        "ferramentas mostra o ativo): <b>Claude Haiku 4.5</b>, o padrão — rápido e " +
+        "barato, com todos os recursos; <b>Claude Sonnet 5</b> — autos volumosos " +
+        "(1M tokens, 600 págs.); <b>Claude Opus 4.8</b> e <b>Fable 5</b> — máxima " +
+        "qualidade, mais caros e lentos; <b>Gemini 3.6 Flash</b> — 1M tokens e até " +
+        "1000 págs. com ótimo custo; <b>Gemini 3.5 Flash-Lite</b> — o mais barato e " +
+        "veloz de todos. Tabela completa de preços na página de ajuda da extensão.</p>" +
         "<p><b>Dica de uso:</b> comece marcando só as peças relevantes; <b>adicionar</b> " +
         "peças no meio da conversa é barato (entram uma única vez, aproveitando o cache). " +
         "Para <b>remover</b> várias peças ou mudar de assunto, prefira ⟲ Nova conversa.</p>" +
@@ -625,6 +646,12 @@ var PjePanel = (function () {
       const total = allDocs.length;
 
       chkAll.checked = total > 0 && sel.length === total;
+      // "principais": peças com categoria destacada (≠ cat-outro) — o estado
+      // do checkbox reflete se TODAS elas estão marcadas
+      const mainChks = [
+        ...doclist.querySelectorAll('.docrow:not(.cat-outro) input[type="checkbox"]'),
+      ];
+      chkMain.checked = mainChks.length > 0 && mainChks.every((c) => c.checked);
       countEl.textContent = total
         ? sel.length
           ? `(${sel.length}/${total} no contexto)`
@@ -678,6 +705,18 @@ var PjePanel = (function () {
       });
       syncSelection();
     });
+    // "principais": só as peças com categoria destacada (decisões, audiências,
+    // petições, provas — as coloridas). Mesmo comportamento do "todas": os
+    // checkboxes seguem sendo a fonte de verdade e o filtro ativo é respeitado.
+    chkMain.addEventListener("change", () => {
+      const filtrando = !!norm(docQ.value.trim());
+      doclist.querySelectorAll('input[type="checkbox"]').forEach((c) => {
+        const row = c.closest(".docrow");
+        if (!row || row.classList.contains("cat-outro")) return;
+        if (!filtrando || !row.hidden) c.checked = chkMain.checked;
+      });
+      syncSelection();
+    });
     // eventos change dos checkboxes individuais borbulham até a lista
     doclist.addEventListener("change", syncSelection);
 
@@ -687,7 +726,8 @@ var PjePanel = (function () {
     // estado visual (texto da dica + botão travado) é controlado por
     // setTimelineTip — o content script é quem sabe o progresso real.
     // -------------------------------------------------------------------------
-    const TIP_PADRAO = "Não achou uma peça? A linha do tempo do PJe carrega aos poucos.";
+    const TIP_PADRAO =
+      "⚠️ O PJe só carrega as peças conforme a linha do tempo é rolada — esta lista pode estar incompleta.";
     let carregarTLCb = null;
     tipLoad.addEventListener("click", () => carregarTLCb && carregarTLCb());
     function setTimelineTip(estado) {
@@ -803,13 +843,13 @@ var PjePanel = (function () {
         box.className = "preview-miss";
         box.innerHTML =
           "<span>Peça ainda não carregada nesta conversa.</span>" +
-          '<button type="button" class="preview-dl">Baixar peça</button>';
+          '<button type="button" class="preview-dl">Abrir documento</button>';
         const btn = box.querySelector(".preview-dl");
         const soAviso = (t) => (box.innerHTML = "<span>" + escapeHtml(t) + "</span>");
         btn.addEventListener("click", async () => {
           if (!previewDlCb) return;
           btn.disabled = true;
-          btn.textContent = "Baixando…";
+          btn.textContent = "Abrindo…";
           previewDlPendente = true;
           try {
             const baixado = await previewDlCb(id);
@@ -823,10 +863,10 @@ var PjePanel = (function () {
                 '.docrow[data-id="' + CSS.escape(id) + '"]'
               );
               if (anc) posicionarPreview(anc);
-            } else soAviso("Não foi possível baixar a peça.");
+            } else soAviso("Não foi possível abrir a peça.");
           } catch (err) {
             if (previewId === id)
-              soAviso("Falha ao baixar: " + String((err && err.message) || err));
+              soAviso("Falha ao abrir: " + String((err && err.message) || err));
           } finally {
             previewDlPendente = false;
           }
