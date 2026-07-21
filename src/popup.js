@@ -2,6 +2,7 @@ const apiKeyEl = document.getElementById("apiKey");
 const geminiKeyEl = document.getElementById("geminiApiKey");
 const modelEl = document.getElementById("model");
 const effortEl = document.getElementById("effort");
+const customEl = document.getElementById("customPrompt");
 const saveBtn = document.getElementById("save");
 const saveStatus = document.getElementById("saveStatus");
 const chip = document.getElementById("chip");
@@ -28,13 +29,17 @@ function setChip() {
       : "Falta a chave da Anthropic para este modelo";
 }
 
-chrome.storage.local.get(["apiKey", "geminiApiKey", "model", "effort"], (v) => {
-  if (v.apiKey) apiKeyEl.value = v.apiKey;
-  if (v.geminiApiKey) geminiKeyEl.value = v.geminiApiKey;
-  if (v.model) modelEl.value = v.model;
-  if (effortEl && v.effort) effortEl.value = v.effort;
-  setChip();
-});
+chrome.storage.local.get(
+  ["apiKey", "geminiApiKey", "model", "effort", "customPrompt"],
+  (v) => {
+    if (v.apiKey) apiKeyEl.value = v.apiKey;
+    if (v.geminiApiKey) geminiKeyEl.value = v.geminiApiKey;
+    if (v.model) modelEl.value = v.model;
+    if (effortEl && v.effort) effortEl.value = v.effort;
+    if (customEl && v.customPrompt) customEl.value = v.customPrompt;
+    setChip();
+  }
+);
 
 function ligarToggle(btn, input) {
   btn.addEventListener("click", () => {
@@ -55,6 +60,7 @@ saveBtn.addEventListener("click", () => {
   const geminiApiKey = geminiKeyEl.value.trim();
   const cfg = { apiKey, geminiApiKey, model: modelEl.value };
   if (effortEl) cfg.effort = effortEl.value;
+  if (customEl) cfg.customPrompt = customEl.value.trim();
   chrome.storage.local.set(cfg, () => {
     setChip();
     const temChaveDoModelo = ehGemini() ? !!geminiApiKey : !!apiKey;

@@ -447,7 +447,19 @@ expandido.
   `MODEL_CAPS` sincronizada com os docs (limites, versões de tools, thinking/effort).
 - Config no `chrome.storage.local`: `apiKey` (Anthropic), `geminiApiKey` (Google),
   `model`, `effort` (baixo/médio/alto — `output_config.effort` na Anthropic, omitido
-  nos modelos sem suporte; `generation_config.thinking_level` no Gemini).
+  nos modelos sem suporte; `generation_config.thinking_level` no Gemini) e
+  `customPrompt` (instruções personalizadas do usuário — persona/preferências,
+  textarea no popup/options, máx. 4000 chars).
+- **Instruções personalizadas** (`customPrompt`): anexadas por `systemPromptAtual()`
+  em content.js DEPOIS das regras-base, com rótulo "siga-as no que não conflitar
+  com as regras acima" (a âncora de não-invenção permanece autoritativa). Ponto
+  ÚNICO de injeção → alcança chat, geração de .docx e count_tokens nos DOIS
+  provedores (Anthropic `system` / Gemini `system_instruction`, repasse verbatim
+  do worker). INVARIANTE: campo vazio ⇒ prompt byte a byte idêntico ao padrão
+  (zero regressão para quem não usa). Editar no meio da conversa só invalida o
+  cache de prefixo (sem guarda de "Nova conversa" — o system não faz parte do
+  histórico); o `storage.onChanged` atualiza a variável e zera `ultimaChaveEst`,
+  e `estimativaLocalTokens` soma o tamanho do texto ao chute do system.
 - Alternar o toggle de busca ou trocar de modelo invalida o cache de prompt daquele ponto
   em diante (comportamento aceito). Arquivos enviados à Files API persistem na conta
   (100 GB por organização) — "limpar uploads" é melhoria futura registrada.

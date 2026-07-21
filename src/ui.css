@@ -74,7 +74,7 @@ body {
 label.field { display: block; margin: 14px 0 6px; font-weight: 600; font-size: 13px; }
 label.field .hint { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 
-input, select {
+input, select, textarea {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -84,7 +84,7 @@ input, select {
   color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--pje);
   box-shadow: 0 0 0 3px rgba(0, 120, 170, 0.18);

@@ -62,6 +62,11 @@
         <option value="low">Baixo</option>
       </select>
 
+      <label class="field" for="customPrompt">Instruções personalizadas (opcional)
+        <span class="hint">Diga quem você é e como quer as respostas — vale para Claude e Gemini. Ex.: "Sou assessor de vara criminal; destaque prazos prescricionais e regime de pena."</span>
+      </label>
+      <textarea id="customPrompt" rows="3" maxlength="4000" placeholder="Ex.: Sou advogado(a) da parte autora; aponte riscos e teses favoráveis…"></textarea>
+
       <button class="btn" id="save">Salvar configuração</button>
       <div class="save-status" id="saveStatus"></div>
 

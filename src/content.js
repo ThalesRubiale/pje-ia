@@ -52,12 +52,31 @@
     ],
     PROMPT_FIM
   ).join(" ");
-  // O system prompt do turno depende do modelo ATUAL (caps) — usado no envio
-  // E no count_tokens, para o pré-voo medir o mesmo request que vai de fato.
+  // Instruções personalizadas do usuário (persona/preferências — magistrado,
+  // assessor, advogado…), definidas nas opções. Entram DEPOIS das regras-base
+  // com um rótulo que preserva a autoridade delas (não inventar, só usar as
+  // peças). Vazio (default) = prompt byte a byte idêntico ao de sempre — quem
+  // não usa o recurso não muda NADA, em nenhum provedor. Custo aceito: editar
+  // no meio de uma conversa invalida o cache de prefixo (mesma regra da troca
+  // de modelo/busca).
+  let customPrompt = "";
+
+  // O system prompt do turno depende do modelo ATUAL (caps) e das instruções
+  // personalizadas — usado no envio (chat e .docx) E no count_tokens, para o
+  // pré-voo medir o mesmo request que vai de fato. Anthropic recebe como
+  // `system`; Gemini como `system_instruction` (o worker repassa verbatim).
   function systemPromptAtual() {
-    return modelCaps && modelCaps.citacoesNativas === false
-      ? SYSTEM_PROMPT_CIT_TEXTUAL
-      : SYSTEM_PROMPT;
+    const base =
+      modelCaps && modelCaps.citacoesNativas === false
+        ? SYSTEM_PROMPT_CIT_TEXTUAL
+        : SYSTEM_PROMPT;
+    if (!customPrompt) return base;
+    return (
+      base +
+      " Instruções adicionais definidas pelo usuário desta extensão (perfil e " +
+      "preferências dele — siga-as no que não conflitar com as regras acima): " +
+      customPrompt
+    );
   }
 
   // Limite de payload do FALLBACK base64 (quando o upload à Files API falha):
@@ -294,8 +313,10 @@
     if (!extensaoViva()) return;
     try {
       // a chave exigida é a do PROVEDOR do modelo escolhido (Anthropic ou
-      // Google) — o provedor sai do prefixo do id, sem esperar o caps chegar
-      chrome.storage.local.get(["apiKey", "geminiApiKey", "model"], (v) => {
+      // Google) — o provedor sai do prefixo do id, sem esperar o caps chegar.
+      // customPrompt pega carona na mesma leitura (evita um get a mais).
+      chrome.storage.local.get(["apiKey", "geminiApiKey", "model", "customPrompt"], (v) => {
+        customPrompt = (v.customPrompt || "").trim();
         const gemini = String(v.model || "").startsWith("gemini-");
         panel.setConfigured(gemini ? !!v.geminiApiKey : !!v.apiKey);
       });
@@ -309,6 +330,11 @@
     // effort entra aqui por causa do selo do modelo (mostra o nível ativo)
     if (area === "local" && (ch.model || ch.apiKey || ch.geminiApiKey || ch.effort))
       refreshCaps();
+    if (area === "local" && ch.customPrompt) {
+      customPrompt = String(ch.customPrompt.newValue || "").trim();
+      // o system mudou → a última medição de contexto não vale mais
+      ultimaChaveEst = "";
+    }
   });
   panel.onConfigure(() => {
     if (!extensaoViva()) return;
@@ -869,7 +895,8 @@
   const LIMIAR_PREFETCH = 12;
 
   function estimativaLocalTokens(ids) {
-    let t = 900; // system prompt + instruções fixas
+    // system prompt + instruções fixas + instruções personalizadas do usuário
+    let t = 900 + Math.ceil(customPrompt.length / CHARS_POR_TOKEN);
     // custo por página varia por provedor: Anthropic ≈ 2000 (texto+imagem
     // citável); Gemini = 258 (documentação oficial) — vem do caps
     const tokensPagina =

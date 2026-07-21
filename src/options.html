@@ -67,6 +67,11 @@
           <option value="low">Baixo</option>
         </select>
 
+        <label class="field" for="customPrompt">Instruções personalizadas (opcional)
+          <span class="hint">Diga quem você é e como quer as respostas — vale para os modelos Claude e Gemini, no chat e no .docx. Ex.: "Sou assessor de gabinete de vara criminal; destaque prazos prescricionais e regime de pena." Alterar isso no meio de uma conversa invalida o cache (o turno seguinte custa um pouco mais).</span>
+        </label>
+        <textarea id="customPrompt" rows="4" maxlength="4000" placeholder="Ex.: Sou advogado(a) da parte autora; aponte riscos e teses favoráveis…"></textarea>
+
         <button class="btn" id="save">Salvar configuração</button>
         <div class="save-status" id="saveStatus"></div>
 
