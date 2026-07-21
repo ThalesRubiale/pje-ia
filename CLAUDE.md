@@ -187,7 +187,9 @@ quebrar:
   escaneados sem camada de texto não são citáveis (degradação graciosa).
 
 - **Fonte de verdade da seleção de peças**: os checkboxes de `.doclist` em `panel.js`.
-  Chips da barra de contexto, contador `(x/y no contexto)`, popup `@` e mensagens são
+  Chips da barra de contexto, contador `x/y no contexto` (pill no cabeçalho da lista,
+  em duas linhas: título+pill+«, depois "Marque o que a IA deve ler:"+chips
+  principais/todas), popup `@` e mensagens são
   *projeções* desse estado — nunca guarde seleção em outro lugar.
 - **Download do PJe é stateful**: o endpoint REST só libera peças já "abertas" na sessão
   JSF. Em 404 **ou corpo vazio com HTTP 200**, `pje.js` simula o clique na timeline (A4J)

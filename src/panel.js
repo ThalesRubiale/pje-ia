@@ -289,12 +289,18 @@ var PjePanel = (function () {
           </button>
           <div class="docs">
             <div class="docs-hd">
-              <span><strong>Peças do processo</strong><span class="count"></span></span>
-              <span class="sel-opts">
-                <label class="all" title="Marca só as peças destacadas por categoria — decisões, audiências, petições e provas (as coloridas na lista): normalmente as mais relevantes para a análise do processo."><input type="checkbox" class="chk-main"> principais</label>
-                <label class="all" title="Marca todas as peças da lista (respeita a busca ativa)"><input type="checkbox" class="chk-all"> todas</label>
+              <div class="dh-row">
+                <strong>Peças do processo</strong>
+                <span class="count"></span>
                 <button type="button" class="docs-fold" title="Ocultar a lista de peças (mais espaço para o chat)" aria-label="Ocultar a lista de peças">${SVG.fold}</button>
-              </span>
+              </div>
+              <div class="dh-row dh-tools">
+                <span class="dh-hint">Marque o que a IA deve ler:</span>
+                <span class="sel-opts">
+                  <label class="all" title="Marca só as peças destacadas por categoria — decisões, audiências, petições e provas (as coloridas na lista): normalmente as mais relevantes para a análise do processo."><input type="checkbox" class="chk-main"> principais</label>
+                  <label class="all" title="Marca todas as peças da lista (respeita a busca ativa)"><input type="checkbox" class="chk-all"> todas</label>
+                </span>
+              </div>
             </div>
             <div class="legend" aria-hidden="true">
               <span><i class="l-dot cat-decisao"></i>decisões</span>
@@ -722,9 +728,10 @@ var PjePanel = (function () {
       chkMain.checked = mainChks.length > 0 && mainChks.every((c) => c.checked);
       countEl.textContent = total
         ? sel.length
-          ? `(${sel.length}/${total} no contexto)`
-          : `(${total})`
+          ? `${sel.length}/${total} no contexto`
+          : `${total} peça` + (total > 1 ? "s" : "")
         : "";
+      countEl.classList.toggle("on", sel.length > 0);
       railNEl.textContent = total ? (sel.length ? `${sel.length}/${total}` : `${total}`) : "";
 
       if (selChangeCb) selChangeCb(sel.map((d) => d.id));
