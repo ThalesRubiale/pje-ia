@@ -84,6 +84,7 @@ input, select, textarea {
   color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
+textarea { resize: vertical; min-height: 58px; }
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--pje);
