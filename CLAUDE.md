@@ -387,7 +387,15 @@ quebrar:
   mouse travariam a extensão. Cache-miss mostra aviso + botão "Abrir documento"
   (rótulo de ABRIR, não "baixar" — decisão de UX; internamente segue sendo download)
   (`panel.onPreviewBaixar` → `PJE.baixar`, bloqueado durante `busy`; alimenta o
-  MESMO `docsCache` que o envio reaproveita — prefetch de graça). PDF: no máximo UM
+  MESMO `docsCache` que o envio reaproveita — prefetch de graça). O popover é
+  REDIMENSIONÁVEL (`resize: both`; o tamanho persiste na sessão via inline
+  width/height — a altura é zerada nos conteúdos compactos por `modoCompact`, e
+  `posicionarPreview` usa a largura REAL quando há tamanho manual) e o embed de
+  PDF usa a toolbar NATIVA do viewer do Chrome (zoom −/+, páginas; sem
+  `#toolbar=0`) — Ctrl+scroll também faz zoom. O fechamento por mouseleave é
+  SUSPENSO enquanto houver botão do mouse pressionado dentro do popover
+  (`previewInteragindo`): no arrasto da alça de resize o ponteiro escapa do
+  popover e o timer de 250 ms o fecharia na mão do usuário. PDF: no máximo UM
   blob URL vivo, revogado em todo fechamento/re-render; acima de 15 MB não
   decodifica no hover (o `atob` travaria a UI) — só metadados + "Abrir em nova aba"
   (posse do URL transferida, revogação com 30 s de folga). Texto: `textContent`,

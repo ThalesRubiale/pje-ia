@@ -1045,6 +1045,12 @@ var PjePanel = (function () {
       limparPreviewUrl();
       previewEl.innerHTML = "";
       previewEl.classList.remove("compact");
+      // Conteúdo compacto (texto/aviso) dispensa altura manual do resize —
+      // herdar a altura de um PDF redimensionado deixaria área em branco.
+      const modoCompact = () => {
+        previewEl.classList.add("compact");
+        previewEl.style.height = "";
+      };
 
       const hd = document.createElement("div");
       hd.className = "preview-hd " + (d ? categoriaDe(d.titulo) : "cat-outro");
@@ -1060,7 +1066,7 @@ var PjePanel = (function () {
 
       if (!info) {
         // cache-miss: nada de download automático — só sob gesto explícito
-        previewEl.classList.add("compact");
+        modoCompact();
         const box = document.createElement("div");
         box.className = "preview-miss";
         box.innerHTML =
@@ -1098,7 +1104,7 @@ var PjePanel = (function () {
       }
 
       if (info.kind === "text") {
-        previewEl.classList.add("compact");
+        modoCompact();
         const t = document.createElement("div");
         t.className = "preview-txt";
         t.textContent = info.text; // NUNCA innerHTML — conteúdo dos autos
@@ -1109,7 +1115,7 @@ var PjePanel = (function () {
       // PDF em cache
       const pesado = (info.size || 0) > PREVIEW_MAX_HOVER_B;
       if (previewCspBloqueado || pesado) {
-        previewEl.classList.add("compact");
+        modoCompact();
         const box = document.createElement("div");
         box.className = "preview-miss";
         box.textContent = pesado
@@ -1120,7 +1126,9 @@ var PjePanel = (function () {
         previewUrl = b64ParaBlobUrl(info.b64);
         const em = document.createElement("embed");
         em.type = "application/pdf";
-        em.src = previewUrl + "#toolbar=0";
+        // COM a toolbar nativa do Chrome: zoom −/+, ajustar à página e
+        // navegação de graça (Ctrl+scroll também faz zoom dentro do viewer).
+        em.src = previewUrl;
         bd.appendChild(em);
       }
       const ft = document.createElement("div");
@@ -1141,7 +1149,9 @@ var PjePanel = (function () {
     // senão à esquerda (lateral: painel colado à borda direita da janela).
     function posicionarPreview(row) {
       const r = row.getBoundingClientRect();
-      const W = Math.min(520, window.innerWidth * 0.46);
+      // largura REAL quando o usuário já redimensionou o popover (persiste na
+      // sessão); oculto (display:none) o offsetWidth é 0 e cai no estimado
+      const W = previewEl.offsetWidth || Math.min(520, window.innerWidth * 0.46);
       const cabeDireita = window.innerWidth - r.right >= W + 24;
       previewEl.style.left = cabeDireita
         ? Math.round(r.right + 12) + "px"
@@ -1162,9 +1172,20 @@ var PjePanel = (function () {
       posicionarPreview(row); // 2º passe: ajusta com a altura real (.compact)
     }
 
+    // Botão do mouse pressionado dentro do popover = usuário redimensionando
+    // pela alça nativa (o ponteiro pode escapar do popover no meio do arrasto —
+    // fechar aqui sumiria com ele na mão do usuário).
+    let previewInteragindo = false;
+    previewEl.addEventListener("pointerdown", () => {
+      previewInteragindo = true;
+    });
+    window.addEventListener("pointerup", () => {
+      previewInteragindo = false;
+    });
     function agendarFecharPreview() {
       clearTimeout(previewHideTimer);
       previewHideTimer = setTimeout(() => {
+        if (previewInteragindo) return agendarFecharPreview(); // resize em curso
         if (!previewEl.matches(":hover") && !doclist.matches(":hover")) hidePreview();
       }, 250);
     }

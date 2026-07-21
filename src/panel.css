@@ -673,9 +673,14 @@
   background: #fff; border: 1px solid var(--line); border-radius: 12px;
   box-shadow: 0 18px 48px rgba(5, 32, 46, 0.3);
   display: flex; flex-direction: column; overflow: hidden;
+  /* redimensionável pela alça do canto (overflow:hidden já é requisito);
+     o tamanho escolhido persiste durante a sessão (inline width/height) */
+  resize: both;
+  min-width: 340px; min-height: 220px;
+  max-width: 94vw; max-height: 94vh;
   animation: rise 0.12s ease-out;
 }
-.preview.compact { height: auto; max-height: 60vh; }
+.preview.compact { height: auto; max-height: 60vh; min-height: 0; }
 .preview-hd {
   flex: none; display: flex; align-items: center; gap: 7px;
   padding: 8px 12px; border-bottom: 1px solid var(--line);
