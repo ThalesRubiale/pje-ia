@@ -143,9 +143,21 @@
   max-width: 96vw;
   max-height: 96vh;
 }
-.wrap.livre .hd { cursor: move; }
+.wrap.livre .hd { cursor: move; touch-action: none; }
 .wrap.livre .hd button { cursor: pointer; }
 .wrap.livre .docs { max-height: 32vh; }
+/* Janela livre LARGA (classe .livre-wide posta pelo JS acima do limiar de
+   740px de largura DO PAINEL — media query mede a viewport, não o painel):
+   a lista de peças vira coluna lateral, como no expandido. Estas regras vêm
+   DEPOIS das de .wrap.livre para vencer na mesma especificidade. */
+.wrap.livre-wide .content { flex-direction: row; }
+.wrap.livre-wide .docs {
+  border-bottom: none;
+  border-right: 1px solid var(--line);
+  max-height: none;
+  width: 320px;
+  flex: none;
+}
 
 /* ---------- Cabeçalho ---------- */
 .hd {
@@ -271,7 +283,8 @@
 .count.on { background: #e1eef5; color: var(--pje-2); }
 /* legenda das categorias — só no modo expandido, onde há espaço */
 .legend { display: none; }
-.wrap.expanded .legend {
+.wrap.expanded .legend,
+.wrap.livre-wide .legend {
   display: flex; flex-wrap: wrap; gap: 4px 12px;
   font-size: 10.5px; color: var(--muted);
   padding: 2px 4px 8px;

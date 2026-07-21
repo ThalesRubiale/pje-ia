@@ -493,7 +493,7 @@ var PjePanel = (function () {
       // callbacks do pipeline de render, mesma razão do setTimeout do
       // "ver na timeline").
       if (eraLivre && modo !== "livre") salvarGeoLivre();
-      wrap.classList.remove("expanded", "full", "lateral", "livre");
+      wrap.classList.remove("expanded", "full", "lateral", "livre", "livre-wide");
       if (modo === "expandido") wrap.classList.add("expanded");
       else if (modo === "cheia") wrap.classList.add("expanded", "full");
       else if (modo === "lateral") wrap.classList.add("lateral");
@@ -530,6 +530,16 @@ var PjePanel = (function () {
       const y = Math.min(Math.max(g.y, 0), vh - 60);
       return { x, y, w, h };
     }
+    // Acima deste limiar de LARGURA DO PAINEL a lista de peças vira coluna
+    // lateral (como no expandido). Media query não serve: ela mede a viewport,
+    // não o painel — a classe .livre-wide é alternada aqui e no ResizeObserver.
+    const LIVRE_LARGO_PX = 740;
+    function atualizarLivreLargo() {
+      const on =
+        wrap.classList.contains("livre") && panelEl.offsetWidth >= LIVRE_LARGO_PX;
+      if (on !== wrap.classList.contains("livre-wide")) hidePreview(); // âncora muda de lugar
+      wrap.classList.toggle("livre-wide", on);
+    }
     function aplicarGeoLivre() {
       const vw = window.innerWidth,
         vh = window.innerHeight;
@@ -544,6 +554,7 @@ var PjePanel = (function () {
       panelEl.style.top = g.y + "px";
       panelEl.style.width = g.w + "px";
       panelEl.style.height = g.h + "px";
+      atualizarLivreLargo();
     }
     function limparGeoLivre() {
       panelEl.style.left = "";
@@ -606,6 +617,7 @@ var PjePanel = (function () {
     // Guardas: só no modo livre (ele também dispara em toda troca de layout)
     // e com o painel aberto (fechado, o rect é 0x0 e apagaria a geometria).
     const roLivre = new ResizeObserver(() => {
+      atualizarLivreLargo();
       if (
         wrap.classList.contains("livre") &&
         wrap.classList.contains("open") &&
@@ -633,7 +645,7 @@ var PjePanel = (function () {
     closeBtn.addEventListener("click", () => {
       hidePreview();
       if (wrap.classList.contains("livre")) salvarGeoLivre(); // antes de tirar a classe
-      wrap.classList.remove("open", "expanded", "full", "lateral", "livre");
+      wrap.classList.remove("open", "expanded", "full", "lateral", "livre", "livre-wide");
       limparGeoLivre();
     });
     expandBtn.addEventListener("click", () =>

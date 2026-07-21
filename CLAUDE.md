@@ -329,7 +329,11 @@ quebrar:
   backdrop) → `expanded full` (tela cheia), o modo `lateral` (sidebar colada à
   direita, página do PJe visível e CLICÁVEL ao lado — sem backdrop; `lateral` e
   `expanded` são mutuamente exclusivas) e o modo `livre` (janela solta: arrasta pelo
-  cabeçalho, redimensiona pela alça nativa `resize:both` do canto — sem backdrop).
+  cabeçalho, redimensiona pela alça nativa `resize:both` do canto — sem backdrop;
+  com ≥740px de largura DO PAINEL ganha `.livre-wide` — alternada por
+  `atualizarLivreLargo` no ResizeObserver e na entrada do modo, pois media query
+  mede a viewport, não o painel — e a lista de peças vira coluna lateral como no
+  expandido, com legenda).
   Transições centralizadas em `aplicarModo()`
   (não voltar aos handlers inline); a preferência persiste em
   `chrome.storage.local.layoutModo` (tela cheia é transitória: persiste "expandido")
