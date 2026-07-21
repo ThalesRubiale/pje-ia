@@ -183,6 +183,7 @@ flowchart LR
 - As chaves de API ficam **somente** no `chrome.storage.local` do seu navegador (não sincronizam, não passam por servidores de terceiros).
 - Os documentos marcados são enviados **diretamente à API do provedor do modelo escolhido** (Anthropic ou Google) — nenhum outro serviço intermedia.
 - A extensão só roda em sites da Justiça (`*.jus.br`), só injeta o painel em telas de autos do PJe e não coleta telemetria.
+- Política completa em [PRIVACY.md](PRIVACY.md) — sem servidor próprio, sem analytics, o desenvolvedor nunca tem acesso a nenhum dado.
 
 > ⚠️ **Aviso legal:** autos judiciais podem conter dados pessoais e sigilosos. O uso da
 > extensão — e o envio de peças a um provedor de IA — é de responsabilidade do usuário,
