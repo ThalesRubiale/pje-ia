@@ -1492,6 +1492,7 @@ var PjePanel = (function () {
     let slash = null; // {start, end, items, idx, query, total, extra}
     let promptAtivo = null; // {id, titulo, texto} — no máximo UM por mensagem
     let plibEditId = null; // id em edição no form (null = novo)
+    let plibIdNovo = ""; // id sorteado para o prompt novo em edição
     let plibDelArm = null; // id com exclusão "armada" (2º clique confirma)
 
     // PLIB é content script carregado antes deste — mas o harness de teste
@@ -1704,6 +1705,10 @@ var PjePanel = (function () {
 
     function abrirPlibForm(p, textoInicial) {
       plibEditId = p ? p.id : null;
+      // id do prompt NOVO gerado uma única vez ao abrir o form: o contador
+      // de bytes roda a cada tecla e sortear um id a cada chamada seria
+      // desperdício (e mediria um tamanho diferente do que será salvo)
+      plibIdNovo = p ? null : temPlib ? PLIB.novoId() : "";
       plibFT.value = p ? p.titulo : "";
       plibFX.value = p ? p.texto : textoInicial || "";
       plibErr.textContent = "";
@@ -1724,7 +1729,7 @@ var PjePanel = (function () {
       const agora = Date.now();
       const antigo = plibEditId && promptsLib.find((x) => x.id === plibEditId);
       return {
-        id: plibEditId || PLIB.novoId(),
+        id: plibEditId || plibIdNovo,
         titulo: plibFT.value.trim(),
         texto: plibFX.value.trim(),
         criadoEm: antigo ? antigo.criadoEm : agora,
@@ -1742,6 +1747,13 @@ var PjePanel = (function () {
     }
     plibFT.addEventListener("input", atualizarPlibCnt);
     plibFX.addEventListener("input", atualizarPlibCnt);
+    // Enter no título salva (o texto é multilinha e mantém o Enter próprio)
+    plibFT.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        salvarPlibForm();
+      }
+    });
 
     function renderPlibList() {
       plibDelArm = null; // re-render desarma qualquer exclusão pendente
@@ -1782,6 +1794,13 @@ var PjePanel = (function () {
       } else if (btn.classList.contains("plib-del")) {
         // exclusão em DOIS cliques (nunca confirm() nativo — o dialog da
         // página fica fora do Shadow DOM e congela a extensão)
+        if (plibDelArm !== p.id) {
+          // desarma o botão de outra linha (senão dois ficariam "excluir?")
+          plibListEl.querySelectorAll(".plib-del.arm").forEach((b) => {
+            b.textContent = "excluir";
+            b.classList.remove("arm");
+          });
+        }
         if (plibDelArm === p.id) {
           plibDelArm = null;
           PLIB.excluir(p.id, () => {

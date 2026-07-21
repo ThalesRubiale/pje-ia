@@ -136,7 +136,22 @@ investigação aberta, um agente com MCP é o caminho — o próprio painel suge
    - *"Quais provas foram juntadas e o que cada uma demonstra?"*
 6. Siga a conversa: **adicionar** peças no meio é barato (aproveita o cache); para **remover** várias ou mudar de assunto, prefira **⟲ Nova conversa**. O medidor e o custo ficam no rodapé; o selo mostra o modelo ativo.
 
-**Atalhos:** `@` cita peças no campo · `Enter` envia · `Shift+Enter` quebra linha · com o popup `@` aberto: `↑↓` navega, `Enter`/`Tab` marca, `Esc` fecha · botões do cabeçalho: `⇄` painel largo, `▯` lateral, `⤢` tela cheia, `▤` oculta/exibe a lista de peças (modos largos), `↺` nova conversa.
+**Atalhos:** `@` cita peças no campo · `/` insere um prompt salvo · `Enter` envia · `Shift+Enter` quebra linha · com os popups `@` e `/` abertos: `↑↓` navega, `Enter`/`Tab` seleciona, `Esc` fecha · botões do cabeçalho: `⇄` painel largo, `▯` lateral, `⤢` tela cheia, `▤` oculta/exibe a lista de peças (modos largos), `↺` nova conversa.
+
+### ✦ Prompts salvos: escreva a instrução uma vez, use sempre
+
+Aquelas instruções que você repete em todo processo (relatório de audiência, linha do
+tempo dos atos, análise de prescrição) viram **prompts salvos**. Digite **`/`** no
+início do campo de mensagem, busque pelo título e selecione: o prompt entra como um
+**chip** acima da caixa de texto — passe o mouse nele para reler o texto completo — e é
+enviado antes do que você escrever na hora. Para criar, editar ou excluir, use o botão
+**✦ Prompts** na barra de ferramentas (ou a linha *Gerenciar prompts…* do próprio
+popup). Eles ficam no `chrome.storage.sync`, então acompanham você em qualquer Chrome
+logado na mesma conta Google.
+
+<p align="center">
+  <img src="docs/biblioteca-de-prompts.gif" alt="Biblioteca de prompts: digitar / abre o popup de prompts salvos, a busca filtra pelo título e o prompt escolhido vira um chip acima do campo de mensagem" width="860">
+</p>
 
 ### 🏛️ Todos os tribunais, sem configurar nada
 
