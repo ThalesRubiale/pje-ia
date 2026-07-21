@@ -200,7 +200,7 @@ flowchart LR
 - [x] Preview de peças, modo lateral e "ver na timeline"
 - [ ] Compaction para conversas muito longas
 - [ ] Limpeza de uploads antigos na Files API
-- [ ] Publicação na Chrome Web Store
+- [ ] Publicação na Chrome Web Store — **enviada para análise em 21/07/2026** (aguardando revisão)
 
 ## 🤝 Contribuindo
 

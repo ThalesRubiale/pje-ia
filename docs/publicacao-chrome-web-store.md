@@ -1,5 +1,10 @@
 # Publicação na Chrome Web Store — guia passo a passo
 
+> **Status: enviada para análise em 21/07/2026** (v0.9.9, pacote `pje-ia-v0.9.9.zip`).
+> Aguardando revisão — pode demorar mais que o normal pela revisão aprofundada do host
+> permission `*.jus.br` (esperado, não é problema). Acompanhar pelo painel e pelo
+> e-mail de contato. Se vier rejeição, ver o item 7 abaixo.
+
 Estado da extensão frente às políticas (avaliado em 21/07/2026, já contra as regras
 novas que entram em vigor em **01/08/2026**): **apta a publicar**. Sem código remoto,
 sem `eval`, sem ofuscação, sem servidor intermediário, permissões mínimas (`storage` +
@@ -42,8 +47,8 @@ Painel → **+ Novo item** → arraste o ZIP. Depois preencha as abas a seguir.
 
 - **Idioma**: Português (Brasil).
 - **Título**: `PJe IA — Análise de Processos`
-- **Resumo** (máx. 132 chars — é a descrição do manifest):
-  > Painel de chat com IA (Claude ou Gemini) para analisar os autos do PJe de qualquer tribunal. Selecione as peças e converse.
+- **Resumo**: preenchido automaticamente com a `description` do manifest (limite de
+  **132 caracteres** — validado no upload; a atual tem 130).
 - **Descrição** (colar):
 
   ```
