@@ -326,12 +326,29 @@ quebrar:
 ## Modos de layout, preview no hover e "ver na timeline" (panel.js/pje.js)
 
 - **Modos de layout** (classes no `.wrap`): flutuante → `expanded` (modal central com
-  backdrop) → `expanded full` (tela cheia) e o modo `lateral` (sidebar colada à
+  backdrop) → `expanded full` (tela cheia), o modo `lateral` (sidebar colada à
   direita, página do PJe visível e CLICÁVEL ao lado — sem backdrop; `lateral` e
-  `expanded` são mutuamente exclusivas). Transições centralizadas em `aplicarModo()`
+  `expanded` são mutuamente exclusivas) e o modo `livre` (janela solta: arrasta pelo
+  cabeçalho, redimensiona pela alça nativa `resize:both` do canto — sem backdrop).
+  Transições centralizadas em `aplicarModo()`
   (não voltar aos handlers inline); a preferência persiste em
   `chrome.storage.local.layoutModo` (tela cheia é transitória: persiste "expandido")
-  e é restaurada no `mount()`. Botão `.side` no header entre `.expand` e `.fs`.
+  e é restaurada no `mount()`. Botões no header: `.side` entre `.expand` e `.free`;
+  `.free` antes de `.fs`.
+- **Modo livre — invariante da geometria**: left/top/width/height vivem em INLINE
+  styles no `.panel` (inline vence classe) e são LIMPOS em toda saída do modo
+  (`limparGeoLivre` em `aplicarModo` e no fechar) — sem isso deformariam o
+  expandido/lateral/flutuante. A captura (`salvarGeoLivre`) acontece ANTES de
+  remover a classe `.livre` (sem ela o `.panel` volta a `position:absolute` e o
+  rect muda) e em três gatilhos: pointerup do arrasto, ResizeObserver (não dispara
+  em janela ocluída — mesmo motivo do setTimeout do "ver na timeline") e
+  saída do modo/fechar (cinto-e-suspensório do resize). Persistência em
+  `chrome.storage.local.livreGeo` (debounce 400 ms); restauração no `mount` com
+  clamp à viewport (o cabeçalho fica sempre alcançável). Os helpers são definidos
+  ANTES do restore do layout (stub de teste chama o callback do storage
+  sincronamente — mesma armadilha do `docsOcultas`). O arrasto ignora
+  `closest("button")` (os botões do header continuam clicáveis) e o
+  `setPointerCapture` fica em try/catch.
 - **Ocultar a lista de peças** (SÓ nos modos expandido/tela cheia via CSS), com
   TRÊS affordances sincronizadas por `setDocsOcultas` — o botão do header
   sozinho passava despercebido (ícone parecido com o do modo lateral):
@@ -357,7 +374,7 @@ quebrar:
   `.doclist` e usa `preventDefault`+`stopPropagation`: a row é um `<label>`; sem
   isso o clique alternaria o checkbox (fonte de verdade da seleção) e dispararia o
   `change`. Callback: `panel.onVerNaTimeline(cb)`.
-- **Preview de peça no hover** (só nos modos expandido/cheia/lateral): popover ÚNICO
+- **Preview de peça no hover** (só nos modos expandido/cheia/lateral/livre): popover ÚNICO
   `.preview` no Shadow DOM, debounce de intenção de 400 ms, posicionado pela
   `getBoundingClientRect` da row (direita quando cabe; senão esquerda — caso do
   lateral). O conteúdo vem SEMPRE do `docsCache` via `panel.onPreview(cb)` (callback

@@ -128,6 +128,25 @@
 }
 .wrap.lateral .docs { max-height: 32vh; }
 
+/* ---------- Modo livre (janela solta) ---------- */
+/* A geometria (left/top/width/height) vem por INLINE style do JS — aqui só o
+   comportamento: âncora no topo-esquerda (crescer pela alça vai para
+   baixo/direita), resize nativo e limites. Sem backdrop: a página do PJe fica
+   visível e clicável ao redor, como no lateral. */
+.wrap.livre .panel {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  resize: both;
+  min-width: 340px;
+  min-height: 380px;
+  max-width: 96vw;
+  max-height: 96vh;
+}
+.wrap.livre .hd { cursor: move; }
+.wrap.livre .hd button { cursor: pointer; }
+.wrap.livre .docs { max-height: 32vh; }
+
 /* ---------- Cabeçalho ---------- */
 .hd {
   display: flex;

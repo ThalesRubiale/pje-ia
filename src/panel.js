@@ -160,9 +160,11 @@ var PjePanel = (function () {
   // Ícones SVG (evita depender de glifos unicode que podem faltar na fonte).
   // Cada ação do cabeçalho tem um desenho DISTINTO: baixar (seta na bandeja),
   // nova conversa (balão com +), expandir (seta horizontal dupla), lateral
-  // (retângulo com coluna à direita), tela cheia (setas diagonais para os
-  // cantos) e fechar (X).
+  // (retângulo com coluna à direita), janela livre (janela com barra de
+  // título), tela cheia (setas diagonais para os cantos) e fechar (X).
   const SVG = {
+    free:
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M1.8 5.4h12.4"/></svg>',
     fs:
       '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4M13.5 2.5L9 7M6.5 13.5h-4v-4M2.5 13.5L7 9"/></svg>',
     expand:
@@ -278,6 +280,7 @@ var PjePanel = (function () {
           <button class="docsvis" title="Ocultar a lista de peças (mais espaço para o chat)" aria-label="Ocultar ou exibir a lista de peças" aria-pressed="false">${SVG.docshide}</button>
           <button class="expand" title="Painel largo (mostra as peças na lateral)" aria-label="Painel largo">${SVG.expand}</button>
           <button class="side" title="Painel lateral (mantém o processo visível ao lado)" aria-label="Painel lateral">${SVG.side}</button>
+          <button class="free" title="Janela livre (arraste pelo título; redimensione pelo canto inferior direito)" aria-label="Janela livre">${SVG.free}</button>
           <button class="fs" title="Tela cheia" aria-label="Tela cheia">${SVG.fs}</button>
           <button class="close" title="Fechar o painel" aria-label="Fechar o painel">${SVG.close}</button>
         </div>
@@ -475,6 +478,7 @@ var PjePanel = (function () {
     // chrome.storage.local (tela cheia é transitória: persiste "expandido").
     // -------------------------------------------------------------------------
     function modoAtual() {
+      if (wrap.classList.contains("livre")) return "livre";
       if (wrap.classList.contains("full")) return "cheia";
       if (wrap.classList.contains("expanded")) return "expandido";
       if (wrap.classList.contains("lateral")) return "lateral";
@@ -482,21 +486,145 @@ var PjePanel = (function () {
     }
     function aplicarModo(modo) {
       hidePreview(); // a posição do popover fica inválida ao trocar o layout
-      wrap.classList.remove("expanded", "full", "lateral");
+      const eraLivre = wrap.classList.contains("livre");
+      // Captura a geometria ANTES de tirar a classe (sem .livre o .panel volta
+      // a position:absolute e o rect muda) — cobre o resize pela alça nativa
+      // mesmo se o ResizeObserver não tiver disparado (janela ocluída suprime
+      // callbacks do pipeline de render, mesma razão do setTimeout do
+      // "ver na timeline").
+      if (eraLivre && modo !== "livre") salvarGeoLivre();
+      wrap.classList.remove("expanded", "full", "lateral", "livre");
       if (modo === "expandido") wrap.classList.add("expanded");
       else if (modo === "cheia") wrap.classList.add("expanded", "full");
       else if (modo === "lateral") wrap.classList.add("lateral");
+      else if (modo === "livre") {
+        wrap.classList.add("livre");
+        aplicarGeoLivre();
+      }
+      // INVARIANTE: a geometria do modo livre vive em inline styles
+      // (left/top/width/height), e inline vence classe — sem esta limpeza os
+      // valores vazariam e deformariam o expandido/lateral/flutuante.
+      if (eraLivre && modo !== "livre") limparGeoLivre();
       try {
         chrome.storage.local.set({ layoutModo: modo === "cheia" ? "expandido" : modo });
       } catch {
         /* contexto da extensão invalidado (recarga) — segue sem persistir */
       }
     }
+
+    // ---- Modo livre: janela solta — arrasta pelo cabeçalho e redimensiona
+    // pela alça nativa (resize:both) do canto inferior direito. Definido ANTES
+    // do restore do layout: o stub de teste chama o callback do storage de
+    // forma SÍNCRONA (mesma armadilha documentada do docsOcultas).
+    const panelEl = $(".panel");
+    const hdEl = $(".hd");
+    let geoLivre = null; // {x, y, w, h} — persistido em chrome.storage.local
+    function clampGeoLivre(g) {
+      const vw = window.innerWidth,
+        vh = window.innerHeight;
+      const w = Math.min(Math.max(g.w, 340), Math.floor(vw * 0.96));
+      const h = Math.min(Math.max(g.h, 380), Math.floor(vh * 0.96));
+      // o cabeçalho precisa continuar alcançável para re-arrastar (uma tira
+      // de 120px do painel sempre fica dentro da viewport)
+      const x = Math.min(Math.max(g.x, 120 - w), vw - 120);
+      const y = Math.min(Math.max(g.y, 0), vh - 60);
+      return { x, y, w, h };
+    }
+    function aplicarGeoLivre() {
+      const vw = window.innerWidth,
+        vh = window.innerHeight;
+      const padrao = {
+        w: Math.min(760, Math.floor(vw * 0.92)),
+        h: Math.min(820, Math.floor(vh * 0.85)),
+      };
+      padrao.x = Math.floor((vw - padrao.w) / 2);
+      padrao.y = Math.floor((vh - padrao.h) / 2);
+      const g = clampGeoLivre(geoLivre || padrao);
+      panelEl.style.left = g.x + "px";
+      panelEl.style.top = g.y + "px";
+      panelEl.style.width = g.w + "px";
+      panelEl.style.height = g.h + "px";
+    }
+    function limparGeoLivre() {
+      panelEl.style.left = "";
+      panelEl.style.top = "";
+      panelEl.style.width = "";
+      panelEl.style.height = "";
+    }
+    let geoTimer = null;
+    function salvarGeoLivre() {
+      const r = panelEl.getBoundingClientRect();
+      geoLivre = {
+        x: Math.round(r.left),
+        y: Math.round(r.top),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      };
+      clearTimeout(geoTimer);
+      geoTimer = setTimeout(() => {
+        try {
+          chrome.storage.local.set({ livreGeo: geoLivre });
+        } catch {
+          /* contexto invalidado — segue sem persistir */
+        }
+      }, 400);
+    }
+    // Arrasto pelo cabeçalho — MENOS pelos botões (eles mantêm o clique)
+    let arrasto = null;
+    hdEl.addEventListener("pointerdown", (e) => {
+      if (!wrap.classList.contains("livre")) return;
+      if (e.button !== 0 || e.target.closest("button")) return;
+      const r = panelEl.getBoundingClientRect();
+      arrasto = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      try {
+        hdEl.setPointerCapture(e.pointerId); // segura o arrasto fora do cabeçalho
+      } catch {
+        /* pointer sintético/sem id válido: o arrasto ainda funciona sobre o hd */
+      }
+      hidePreview(); // o popover está ancorado numa row que vai se mover junto
+      e.preventDefault(); // sem seleção de texto no meio do arrasto
+    });
+    hdEl.addEventListener("pointermove", (e) => {
+      if (!arrasto) return;
+      const g = clampGeoLivre({
+        x: e.clientX - arrasto.dx,
+        y: e.clientY - arrasto.dy,
+        w: panelEl.offsetWidth,
+        h: panelEl.offsetHeight,
+      });
+      panelEl.style.left = g.x + "px";
+      panelEl.style.top = g.y + "px";
+    });
+    const fimArrasto = () => {
+      if (!arrasto) return;
+      arrasto = null;
+      salvarGeoLivre();
+    };
+    hdEl.addEventListener("pointerup", fimArrasto);
+    hdEl.addEventListener("pointercancel", fimArrasto);
+    // A alça nativa de resize não emite evento próprio — o observer persiste.
+    // Guardas: só no modo livre (ele também dispara em toda troca de layout)
+    // e com o painel aberto (fechado, o rect é 0x0 e apagaria a geometria).
+    const roLivre = new ResizeObserver(() => {
+      if (
+        wrap.classList.contains("livre") &&
+        wrap.classList.contains("open") &&
+        !arrasto
+      )
+        salvarGeoLivre();
+    });
+    roLivre.observe(panelEl);
+
     // Restaura a preferência de layout (vale a partir do próximo open()).
     try {
-      chrome.storage.local.get(["layoutModo"], (v) => {
+      chrome.storage.local.get(["layoutModo", "livreGeo"], (v) => {
+        if (v && v.livreGeo) geoLivre = v.livreGeo;
         if (v && v.layoutModo === "lateral") wrap.classList.add("lateral");
         else if (v && v.layoutModo === "expandido") wrap.classList.add("expanded");
+        else if (v && v.layoutModo === "livre") {
+          wrap.classList.add("livre");
+          aplicarGeoLivre();
+        }
       });
     } catch {
       /* sem storage (harness de teste): fica no flutuante */
@@ -504,7 +632,9 @@ var PjePanel = (function () {
 
     closeBtn.addEventListener("click", () => {
       hidePreview();
-      wrap.classList.remove("open", "expanded", "full", "lateral");
+      if (wrap.classList.contains("livre")) salvarGeoLivre(); // antes de tirar a classe
+      wrap.classList.remove("open", "expanded", "full", "lateral", "livre");
+      limparGeoLivre();
     });
     expandBtn.addEventListener("click", () =>
       aplicarModo(modoAtual() === "expandido" ? "flutuante" : "expandido")
@@ -517,6 +647,10 @@ var PjePanel = (function () {
     const sideBtn = $(".side");
     sideBtn.addEventListener("click", () =>
       aplicarModo(modoAtual() === "lateral" ? "flutuante" : "lateral")
+    );
+    const freeBtn = $(".free");
+    freeBtn.addEventListener("click", () =>
+      aplicarModo(modoAtual() === "livre" ? "flutuante" : "livre")
     );
     backdrop.addEventListener("click", () => aplicarModo("flutuante"));
 
@@ -1025,7 +1159,11 @@ var PjePanel = (function () {
 
     // mouseover/mouseout borbulham (mouseenter não) — delegação nas rows
     doclist.addEventListener("mouseover", (e) => {
-      if (!wrap.classList.contains("expanded") && !wrap.classList.contains("lateral"))
+      if (
+        !wrap.classList.contains("expanded") &&
+        !wrap.classList.contains("lateral") &&
+        !wrap.classList.contains("livre")
+      )
         return;
       const row = e.target.closest(".docrow");
       if (!row || !previewCb) return;
