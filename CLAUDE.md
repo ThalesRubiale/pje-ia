@@ -124,7 +124,14 @@ quebrar:
   iteração; retry transitório (429/5xx, `err.retryable`) funciona igual. Stream que
   termina SEM `interaction.completed` (queda "limpa" de conexão) e status
   `failed/cancelled` LANÇAM erro retryable — resposta parcial nunca passa por
-  completa. Cache: só
+  completa.
+- **Teto de saída no Gemini: NÃO enviar campo nenhum** (invariante testado). O
+  limite dos modelos é 65.536 tokens e, omitido, a saída vai até ele — o máximo
+  possível. A Interactions API não documenta campo de max output; repassar o
+  `req.max_tokens` de 32000 do caminho Anthropic cortaria o teto pela metade, e
+  nome chutado (`max_output_tokens`) arriscaria 400 em todo request. O `max_tokens`
+  de 32000 continua correto na Anthropic (parâmetro OBRIGATÓRIO lá; 32K é o valor
+  aceito por todos os modelos Claude). Cache: só
   implicit caching (automático) — `cache_control` não é gravado nos blocos quando o
   provedor é gemini (e gemini.js nem copiaria o campo).
 - **Config**: chave em `chrome.storage.local.geminiApiKey` (a `apiKey` continua sendo a
