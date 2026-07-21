@@ -194,6 +194,8 @@ var PjePanel = (function () {
       '<svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg>',
     check:
       '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5l3.5 3.5 7-8"/></svg>',
+    lupa:
+      '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.6 10.6L14 14"/></svg>',
   };
 
   // Título curto da peça (sem o prefixo numérico do id) para chips e menções.
@@ -318,6 +320,9 @@ var PjePanel = (function () {
                   <span>Adicionar peça ao contexto</span>
                   <span class="mention-keys"><kbd>↑↓</kbd> navegar <kbd>↵</kbd> marcar <kbd>esc</kbd> fechar</span>
                 </div>
+                <div class="mention-q" aria-hidden="true">
+                  ${SVG.lupa}<span class="mq-t"></span><span class="mq-caret"></span><span class="mq-n"></span>
+                </div>
                 <div class="mention-list" role="listbox"></div>
               </div>
               <div class="status" aria-live="polite"></div>
@@ -384,6 +389,8 @@ var PjePanel = (function () {
     const ctxbar = $(".ctxbar");
     const mentionEl = $(".mention");
     const mentionList = $(".mention-list");
+    const mentionQT = $(".mq-t"); // espelho ao vivo da busca digitada após o @
+    const mentionQN = $(".mq-n"); // contador de peças encontradas
     const inEl = $(".in");
     const sendBtn = $(".send");
 
@@ -1116,7 +1123,9 @@ var PjePanel = (function () {
       if (!tok || !allDocs.length) return closeMention();
       const q = norm(tok.query.trim());
       const all = allDocs.filter((d) => !q || norm(d.titulo).includes(q));
-      if (!all.length) return closeMention();
+      // busca sem resultado NÃO fecha o popup: o campo de busca visível
+      // sumir no meio da digitação parecia travamento — mostra o estado
+      // vazio (o teclado volta ao normal: Enter envia, Esc fecha)
       const items = all.slice(0, MENTION_MAX);
       const prevId =
         mention && mention.items[mention.idx] ? mention.items[mention.idx].id : null;
@@ -1127,13 +1136,36 @@ var PjePanel = (function () {
         items,
         extra: all.length - items.length,
         idx: keepIdx >= 0 ? keepIdx : 0,
+        query: tok.query.trim(),
+        total: all.length,
       };
       renderMention();
     }
 
     function renderMention() {
       const ids = new Set(getSelected());
+      // campo de busca visível: espelha o que o usuário digita depois do @
+      // (a digitação continua no campo de mensagem — aqui é só o reflexo,
+      // com contador de resultados; a mecânica de filtro é a mesma de sempre)
+      mentionQT.classList.toggle("vazio", !mention.query);
+      mentionQT.textContent =
+        mention.query || "digite para buscar pelo nome da peça…";
+      mentionQN.textContent =
+        mention.total === 0
+          ? "nenhuma peça"
+          : mention.total === 1
+            ? "1 peça"
+            : mention.total + " peças";
       mentionList.innerHTML = "";
+      if (!mention.items.length) {
+        const vazio = document.createElement("div");
+        vazio.className = "mrow-more";
+        vazio.textContent =
+          "Nenhuma peça com esse nome — apague para ver todas (esc fecha).";
+        mentionList.appendChild(vazio);
+        mentionEl.hidden = false;
+        return;
+      }
       mention.items.forEach((d, i) => {
         const row = document.createElement("div");
         row.setAttribute("role", "option");
@@ -1232,19 +1264,22 @@ var PjePanel = (function () {
     inEl.addEventListener("keydown", (e) => {
       if (mention && !mentionEl.hidden) {
         const n = mention.items.length;
-        if (e.key === "ArrowDown") {
+        // com a lista VAZIA (busca sem resultado) só o Esc é capturado —
+        // setas movem o caret e Enter envia normalmente (impedir o envio
+        // bloquearia mensagens com "@algo" que não é peça)
+        if (n && e.key === "ArrowDown") {
           e.preventDefault();
           mention.idx = (mention.idx + 1) % n;
           renderMention();
           return;
         }
-        if (e.key === "ArrowUp") {
+        if (n && e.key === "ArrowUp") {
           e.preventDefault();
           mention.idx = (mention.idx - 1 + n) % n;
           renderMention();
           return;
         }
-        if (e.key === "Enter" || e.key === "Tab") {
+        if (n && (e.key === "Enter" || e.key === "Tab")) {
           e.preventDefault();
           pickMention(mention.idx);
           return;

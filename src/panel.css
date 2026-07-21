@@ -557,6 +557,24 @@
   text-transform: uppercase; color: var(--muted);
 }
 .mention-keys { font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 10.5px; }
+/* Campo de busca VISÍVEL do popup @: espelho do que se digita após o @ no
+   campo de mensagem (não é um input — o foco nunca sai do textarea; o cursor
+   piscando sinaliza "continue digitando aqui embaixo que eu filtro"). */
+.mention-q {
+  display: flex; align-items: center; gap: 7px;
+  margin: 8px 12px 2px; padding: 6px 10px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--paper); font-size: 12.5px; color: var(--text);
+}
+.mention-q svg { color: var(--muted); flex: none; }
+.mq-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mq-t.vazio { color: #8ea3b0; }
+.mq-caret {
+  flex: none; width: 1.5px; height: 13px; border-radius: 1px;
+  background: var(--pje-2); animation: mq-blink 1.1s steps(1) infinite;
+}
+@keyframes mq-blink { 50% { opacity: 0; } }
+.mq-n { flex: none; margin-left: auto; font-size: 10.5px; color: var(--muted); }
 .mention-keys kbd {
   font-family: inherit; background: #edf3f7; border: 1px solid var(--line);
   border-radius: 4px; padding: 0 4px; font-size: 9.5px; color: var(--text);

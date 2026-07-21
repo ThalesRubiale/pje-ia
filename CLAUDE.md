@@ -388,6 +388,16 @@ texto e o checkbox correspondente é alternado. Detalhes fáceis de quebrar:
 - `updateMention()` é chamado em `input`, `click`, `keyup` (setas/Home/End) e em
   `setDocs()` — todos os caminhos que movem o caret ou mudam a lista.
 - Cap de `MENTION_MAX` itens com linha "… e mais N peças" quando excede.
+- **Busca visível** (`.mention-q`): um campo de busca FALSO (lupa + texto +
+  cursor piscando + contador "N peças") entre o cabeçalho e a lista espelha
+  a query digitada após o `@` — a digitação continua no textarea (não é um
+  input; `aria-hidden`, atualizado em `renderMention` via `mention.query`/
+  `mention.total`). Sem ele ninguém descobria que dava para filtrar.
+- **Busca sem resultado NÃO fecha o popup**: mostra o estado vazio ("nenhuma
+  peça…") — o campo de busca sumir no meio da digitação parecia travamento.
+  Com a lista vazia o teclado é liberado (só Esc é capturado): Enter ENVIA a
+  mensagem normalmente — capturá-lo bloquearia mensagens com "@algo" que não
+  é peça — e as setas movem o caret.
 
 ## Geração de .docx (skill oficial)
 
