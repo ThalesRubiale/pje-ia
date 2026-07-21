@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PJe IA — Análise de Processos",
   "version": "0.9.9",
-  "description": "Painel de chat com IA (Claude ou Gemini) para analisar os autos do PJe de qualquer tribunal. Selecione as peças e converse com o modelo.",
+  "description": "Chat com IA (Claude ou Gemini) sobre os autos do PJe de qualquer tribunal: selecione as peças do processo e converse com o modelo.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://*.jus.br/*",
