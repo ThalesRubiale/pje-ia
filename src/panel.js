@@ -202,14 +202,16 @@ var PjePanel = (function () {
   // A primeira que casar vence — mantenha as mais específicas primeiro.
   // ---------------------------------------------------------------------------
   const CATEGORIAS = [
-    // atos do juízo
-    { cls: "cat-decisao", re: /\b(sentenca|decisao|despacho|acordao|liminar|tutela|julgamento)\b/ },
-    // atas e audiências ("ata notarial" é prova — fica para a regra de provas)
-    { cls: "cat-audiencia", re: /\b(ata(?!\s+notarial)|audiencia|assentada|depoimento)\b/ },
-    // peças das partes
-    { cls: "cat-peticao", re: /\b(peticao|inicial|contestacao|replica|treplica|recurso|apelacao|embargos|agravo|impugnacao|alegacoes|manifestacao|defesa|denuncia|queixa|memoriais|razoes|contrarrazoes)\b/ },
-    // provas técnicas
-    { cls: "cat-prova", re: /\b(laudo|pericia|parecer|ata notarial)\b/ },
+    // atos do juízo — o lookbehind tira "cumprimento de sentença" daqui (é
+    // fase/petição das partes, não ato decisório); "acordao" ≠ "acordo"
+    // (o \b não casa dentro de "acordao", então "acordo" pode ir às petições)
+    { cls: "cat-decisao", re: /\b((?<!cumprimento de )sentenca|decisao|despacho|acordao|liminar|tutela|julgamento|impronuncia|pronuncia|homologacao|medida protetiva|transito em julgado)\b/ },
+    // atas, audiências e atos orais ("ata notarial" é prova — regra de provas)
+    { cls: "cat-audiencia", re: /\b(ata(?!\s+notarial)|audiencia|assentada|depoimento|interrogatorio|oitiva|degravacao)\b/ },
+    // peças das partes e do Ministério Público
+    { cls: "cat-peticao", re: /\b(peticao|inicial|emenda|contestacao|reconvencao|replica|treplica|recurso|apelacao|embargos|agravo|impugnacao|excecao|alegacoes|manifestacao|defesa|denuncia|queixa|memoriais|razoes|contrarrazoes|cumprimento de sentenca|habeas|cota|promocao|quesitos|rol de testemunhas|acordo)\b/ },
+    // provas técnicas e atos de investigação (criminal: IP, APF, exames…)
+    { cls: "cat-prova", re: /\b(laudo|pericia|parecer|ata notarial|auto de|flagrante|inquerito|boletim de ocorrencia|exame|corpo de delito|midia|interceptacao|relatorio|estudo social|estudo psicossocial|antecedentes)\b/ },
   ];
   function categoriaDe(titulo) {
     const t = norm(titulo);

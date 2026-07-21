@@ -403,9 +403,19 @@ organização (US$ 0,05/h depois), além dos tokens.
 
 `CATEGORIAS` em `panel.js` classifica cada título por regex **sobre o texto normalizado
 sem acentos** (`norm()`): decisões (dourado), audiências (verde), petições (azul),
-provas (violeta), outros (neutro). A primeira regra que casar vence — cuidado com
-sobreposições ("ata notarial" é prova, tratada com lookahead negativo na regra de
-audiências). As cores vivem em variáveis `--cat-*` no `panel.css` e aparecem na lista
+provas (violeta), outros (neutro). Cobre o vocabulário criminal (IP, APF, flagrante,
+corpo de delito, interrogatório, pronúncia, cota/promoção ministerial, mídia…) e cível
+(reconvenção, exceção, acordo, quesitos, estudo psicossocial…). A primeira regra que
+casar vence — cuidado com sobreposições, todas testadas no teste de categorias do
+scratchpad (58 títulos reais):
+- "ata notarial" é prova — lookahead negativo na regra de audiências;
+- "cumprimento de sentença" é fase/petição das PARTES — lookbehind negativo em
+  `sentenca` na regra de decisões (senão "Impugnação ao Cumprimento de Sentença"
+  viraria decisão), e o termo aparece explícito na regra de petições;
+- "acordo" (petição) NÃO casa dentro de "acordao" (decisão): o `\b` não existe entre
+  "acordo" e o "a" seguinte — seguro manter os dois;
+- "mídia" sozinha é prova, mas "mídia da audiência" cai em audiências (regra anterior);
+- "manifestação sobre o laudo" é petição (regra de petições vem antes da de provas). As cores vivem em variáveis `--cat-*` no `panel.css` e aparecem na lista
 lateral (dot + peso da fonte), nos chips e no popup `@`; a legenda só é exibida no modo
 expandido.
 
