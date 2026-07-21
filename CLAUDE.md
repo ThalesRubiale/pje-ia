@@ -330,8 +330,15 @@ quebrar:
   (não voltar aos handlers inline); a preferência persiste em
   `chrome.storage.local.layoutModo` (tela cheia é transitória: persiste "expandido")
   e é restaurada no `mount()`. Botão `.side` no header entre `.expand` e `.fs`.
-- **Ocultar a lista de peças** (botão `.docsvis` no header, SÓ visível nos modos
-  expandido/tela cheia via CSS): alterna `docs-collapsed` no `.wrap` →
+- **Ocultar a lista de peças** (SÓ nos modos expandido/tela cheia via CSS), com
+  TRÊS affordances sincronizadas por `setDocsOcultas` — o botão do header
+  sozinho passava despercebido (ícone parecido com o do modo lateral):
+  (a) botão `.docsvis` no header, cujo ícone TROCA com o estado (chevron ←
+  dentro do retângulo = recolher; → = exibir; `SVG.docshide`/`SVG.docsshow`);
+  (b) botão `.docs-fold` («) no cabeçalho da própria coluna de peças;
+  (c) aba vertical `.docs-rail` ("Peças do processo" + badge `x/y`, alimentada
+  em `syncSelection`) que fica NO LUGAR da coluna recolhida e a reabre — a
+  lista nunca some sem deixar rastro. Alterna `docs-collapsed` no `.wrap` →
   `.wrap.expanded.docs-collapsed .docs {display:none}` — mais espaço para o chat.
   É puramente VISUAL: os checkboxes seguem no DOM (fonte de verdade da seleção),
   então chips, popup `@`, contador e envio funcionam com a lista oculta. Persiste

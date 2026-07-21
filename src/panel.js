@@ -169,8 +169,15 @@ var PjePanel = (function () {
       '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M5 5.5L2.5 8 5 10.5M11 5.5L13.5 8 11 10.5"/></svg>',
     side:
       '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M9.8 2.5v11"/></svg>',
-    docsvis:
-      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M6.2 2.5v11"/></svg>',
+    // ocultar/exibir a lista de peças: o chevron DENTRO do retângulo dá o
+    // sentido da ação (← recolhe a coluna, → traz de volta) — sem ele o ícone
+    // ficava idêntico ao do modo lateral e ninguém achava o botão
+    docshide:
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M6.2 2.5v11"/><path d="M11.4 5.9L9.3 8l2.1 2.1"/></svg>',
+    docsshow:
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M6.2 2.5v11"/><path d="M9.3 5.9L11.4 8l-2.1 2.1"/></svg>',
+    fold:
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 3.5L4 8l4.5 4.5M13 3.5L8.5 8l4.5 4.5"/></svg>',
     ver:
       '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="4.2"/><path d="M8 1.4v2.6M8 12v2.6M1.4 8h2.6M12 8h2.6"/></svg>',
     close:
@@ -266,19 +273,25 @@ var PjePanel = (function () {
           <span class="ttl">Assistente dos Autos</span>
           <button class="dl" title="Baixar a conversa em arquivo (.md)" aria-label="Baixar a conversa em arquivo">${SVG.download}</button>
           <button class="reset" title="Nova conversa (zera o chat e o contexto)" aria-label="Nova conversa">${SVG.reset}</button>
-          <button class="docsvis" title="Ocultar a lista de peças (mais espaço para o chat)" aria-label="Ocultar ou exibir a lista de peças" aria-pressed="false">${SVG.docsvis}</button>
+          <button class="docsvis" title="Ocultar a lista de peças (mais espaço para o chat)" aria-label="Ocultar ou exibir a lista de peças" aria-pressed="false">${SVG.docshide}</button>
           <button class="expand" title="Painel largo (mostra as peças na lateral)" aria-label="Painel largo">${SVG.expand}</button>
           <button class="side" title="Painel lateral (mantém o processo visível ao lado)" aria-label="Painel lateral">${SVG.side}</button>
           <button class="fs" title="Tela cheia" aria-label="Tela cheia">${SVG.fs}</button>
           <button class="close" title="Fechar o painel" aria-label="Fechar o painel">${SVG.close}</button>
         </div>
         <div class="content">
+          <button type="button" class="docs-rail" title="Exibir a lista de peças" aria-label="Exibir a lista de peças">
+            <span class="rail-i">${SVG.docsshow}</span>
+            <span class="rail-t">Peças do processo</span>
+            <span class="rail-n"></span>
+          </button>
           <div class="docs">
             <div class="docs-hd">
               <span><strong>Peças do processo</strong><span class="count"></span></span>
               <span class="sel-opts">
                 <label class="all" title="Marca só as peças destacadas por categoria — decisões, audiências, petições e provas (as coloridas na lista): normalmente as mais relevantes para a análise do processo."><input type="checkbox" class="chk-main"> principais</label>
                 <label class="all" title="Marca todas as peças da lista (respeita a busca ativa)"><input type="checkbox" class="chk-all"> todas</label>
+                <button type="button" class="docs-fold" title="Ocultar a lista de peças (mais espaço para o chat)" aria-label="Ocultar a lista de peças">${SVG.fold}</button>
               </span>
             </div>
             <div class="legend" aria-hidden="true">
@@ -352,6 +365,7 @@ var PjePanel = (function () {
     const chkAll = $(".chk-all");
     const chkMain = $(".chk-main");
     const countEl = $(".count");
+    const railNEl = $(".rail-n"); // badge da aba vertical (lista recolhida)
     const docQ = $(".doc-q");
     const docQN = $(".doc-q-n");
     const tipTxt = $(".tip-txt");
@@ -497,10 +511,14 @@ var PjePanel = (function () {
     // chips, popup @ e envio continuam funcionando com a lista oculta. O
     // botão só aparece nos modos expandidos (CSS) e a preferência persiste.
     const docsVisBtn = $(".docsvis");
+    const docsFoldBtn = $(".docs-fold");
+    const docsRail = $(".docs-rail");
     function setDocsOcultas(on, persistir) {
       wrap.classList.toggle("docs-collapsed", on);
       docsVisBtn.classList.toggle("on", on);
       docsVisBtn.setAttribute("aria-pressed", String(!!on));
+      // o ícone acompanha a ação disponível: chevron ← recolhe, → traz de volta
+      docsVisBtn.innerHTML = on ? SVG.docsshow : SVG.docshide;
       docsVisBtn.title = on
         ? "Exibir a lista de peças"
         : "Ocultar a lista de peças (mais espaço para o chat)";
@@ -516,6 +534,11 @@ var PjePanel = (function () {
     docsVisBtn.addEventListener("click", () =>
       setDocsOcultas(!wrap.classList.contains("docs-collapsed"))
     );
+    // controles colocados JUNTO da coluna que eles controlam (o botão do
+    // header ninguém achava): « no cabeçalho da lista recolhe; a aba
+    // vertical que fica no lugar da coluna traz de volta
+    docsFoldBtn.addEventListener("click", () => setDocsOcultas(true));
+    docsRail.addEventListener("click", () => setDocsOcultas(false));
     try {
       chrome.storage.local.get(["docsOcultas"], (v) => {
         if (v && v.docsOcultas) setDocsOcultas(true, false);
@@ -694,6 +717,7 @@ var PjePanel = (function () {
           ? `(${sel.length}/${total} no contexto)`
           : `(${total})`
         : "";
+      railNEl.textContent = total ? (sel.length ? `${sel.length}/${total}` : `${total}`) : "";
 
       if (selChangeCb) selChangeCb(sel.map((d) => d.id));
 

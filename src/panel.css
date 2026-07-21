@@ -160,6 +160,44 @@
 }
 .wrap.expanded.docs-collapsed .docs { display: none; }
 
+/* Botão « no cabeçalho da própria coluna de peças (o controle mora junto do
+   que ele controla — o botão do header sozinho passava despercebido). */
+.docs-fold { display: none; }
+.wrap.expanded .docs-fold {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: none; border-radius: 6px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.wrap.expanded .docs-fold:hover { background: #e3edf3; color: var(--pje-2); }
+
+/* Aba vertical que fica no LUGAR da coluna recolhida: a lista nunca some sem
+   deixar rastro — um clique na aba (ou no botão do header) traz de volta. */
+.docs-rail { display: none; }
+.wrap.expanded.docs-collapsed .docs-rail {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  flex: none; width: 34px; padding: 14px 0;
+  border: none; border-right: 1px solid var(--line);
+  background: #fff; color: var(--pje-2); cursor: pointer;
+  font-family: inherit;
+}
+.docs-rail:hover { background: #eef4f8; }
+.docs-rail .rail-i { display: flex; }
+.docs-rail .rail-t {
+  writing-mode: vertical-rl;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.docs-rail:hover .rail-t { color: var(--pje-2); }
+.docs-rail .rail-n {
+  writing-mode: horizontal-tb;
+  font-size: 10px; font-weight: 700;
+  background: var(--pje-soft); color: #fff;
+  border-radius: 8px; padding: 2px 5px;
+  min-width: 14px; text-align: center;
+}
+.docs-rail .rail-n:empty { display: none; }
+
 /* ---------- Corpo: docs + main ---------- */
 .content { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .wrap.expanded .content { flex-direction: row; }
