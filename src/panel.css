@@ -150,6 +150,15 @@
 }
 .hd button:hover { background: rgba(255, 255, 255, 0.26); }
 .hd button svg { display: block; }
+/* Ocultar/exibir a coluna de peças: só faz sentido (e só aparece) nos modos
+   expandido/tela cheia — no flutuante e no lateral a lista fica no topo. */
+.hd .docsvis { display: none; }
+.wrap.expanded .hd .docsvis { display: flex; }
+.hd .docsvis.on {
+  background: rgba(255, 255, 255, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+.wrap.expanded.docs-collapsed .docs { display: none; }
 
 /* ---------- Corpo: docs + main ---------- */
 .content { flex: 1; display: flex; flex-direction: column; min-height: 0; }

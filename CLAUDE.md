@@ -322,6 +322,14 @@ quebrar:
   (não voltar aos handlers inline); a preferência persiste em
   `chrome.storage.local.layoutModo` (tela cheia é transitória: persiste "expandido")
   e é restaurada no `mount()`. Botão `.side` no header entre `.expand` e `.fs`.
+- **Ocultar a lista de peças** (botão `.docsvis` no header, SÓ visível nos modos
+  expandido/tela cheia via CSS): alterna `docs-collapsed` no `.wrap` →
+  `.wrap.expanded.docs-collapsed .docs {display:none}` — mais espaço para o chat.
+  É puramente VISUAL: os checkboxes seguem no DOM (fonte de verdade da seleção),
+  então chips, popup `@`, contador e envio funcionam com a lista oculta. Persiste
+  em `chrome.storage.local.docsOcultas`, restaurada num `get` próprio DEPOIS de
+  `setDocsOcultas` existir (stub de teste pode chamar o callback sincronamente);
+  alternar fecha o preview (a âncora do popover some da tela).
 - **"Ver na timeline"** (botão `.d-ver` em cada docrow, aparece no hover):
   `PJE.scrollAte(id)` rola a `#divTimeLine` até a peça com flash de ~2s — o estilo
   do flash é injetado no DOM da PÁGINA (`#pje-ia-flash-style`), pois o alvo vive

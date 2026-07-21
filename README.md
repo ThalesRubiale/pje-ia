@@ -49,28 +49,57 @@ investigação aberta, um agente com MCP é o caminho — o próprio painel suge
 
 ## ✨ Recursos
 
-- **Chat sobre os autos** — converse com o modelo sobre as peças selecionadas, com histórico multi-turno.
-- **Dois provedores de IA** — modelos Claude (Anthropic) e Gemini (Google) na mesma extensão: cadastre a chave do provedor que preferir (ou as duas) e troque de modelo nas opções. Nos modelos Gemini, as citações de página vêm no próprio texto e a geração de .docx fica indisponível (recursos exclusivos da API da Anthropic).
-- **Seleção de peças** — checkboxes por documento; só o que você marcar é enviado.
-- **Busca na lista de peças** — filtro instantâneo por título, ignorando acentos; "todas" marca/desmarca só as peças visíveis no filtro.
-- **PDF × HTML detectados automaticamente** — peças HTML têm o texto extraído localmente e vão como texto puro (fração do custo de um PDF); a detecção confere o content-type **e** a assinatura `%PDF-` do binário, então PDF mal-rotulado pelo servidor não vira lixo no contexto.
-- **Menção com `@`** — digite `@` no campo de pergunta para buscar e marcar peças sem sair do teclado: filtro que ignora acentos (`@peticao` acha "Petição Inicial"), navegação por `↑↓`, `Enter` marca/desmarca, `Esc` fecha.
-- **Peças categorizadas por cor** — decisões, atas/audiências, petições e provas ganham destaque automático na lista (regex sobre o título), com legenda no modo expandido.
-- **Contexto sempre visível** — chips acima do campo mostram as peças marcadas (com `×` para remover), o contador indica `x/y no contexto`, e cada pergunta exibe quais peças foram anexadas naquele turno.
-- **Progresso por peça** — ao preparar a análise, um card mostra o estado de cada peça (aguardando → baixando → pronta) com barra de progresso, e a resposta chega com indicador de digitação animado.
-- **OCR nativo** — peças digitalizadas (imagem) são lidas pelo próprio Claude, sem OCR externo.
-- **Respostas formatadas** — markdown completo: tabelas, listas, títulos e citações.
-- **Citações pelo nome da peça** — cada PDF é enviado com o título da peça, para o modelo citar "na Contestação…" em vez de números de id.
-- **Citações com página** — as afirmações vêm com marcadores `[n]` clicáveis e a lista de fontes ("Contestação, fl. 12") no rodapé de cada resposta.
-- **Busca de jurisprudência** 🔍 — toggle que libera pesquisa em fontes oficiais (STF, STJ, Planalto, LexML…), com a consulta em andamento exibida em tempo real.
-- **Gerar .docx** 📄 — relatório do processo em Word de verdade (skill oficial da Anthropic), baixado direto pelo navegador.
-- **Streaming** — a resposta aparece em tempo real, com raciocínio do modelo em bloco colapsável.
-- **Medidor de contexto** — barra mostra quanto da janela do modelo (tokens e páginas de PDF) a conversa já ocupa, atualizada em tempo real ao marcar/desmarcar peças (antes mesmo do envio), com alertas em 70% e 90%; desmarcar uma peça **libera contexto de verdade** no request seguinte.
+### Conversa e modelos
+
+- **Chat sobre os autos** — converse com o modelo sobre as peças selecionadas, com histórico multi-turno e streaming em tempo real (raciocínio do modelo em bloco colapsável).
+- **Dois provedores de IA** — modelos **Claude (Anthropic)** e **Gemini (Google)** na mesma extensão: cadastre a chave do provedor que preferir (ou as duas) e troque de modelo nas opções. Ver a tabela [Qual modelo escolher?](#-qual-modelo-escolher) abaixo.
+- **Selo do modelo ativo** — a barra de ferramentas mostra o modelo e o nível de raciocínio em uso (ex.: "Gemini 3.6 Flash · raciocínio alto"), atualizado na hora ao salvar as opções; clique nele para abrir a configuração.
+- **Custo por resposta** — o rodapé estima o custo em US$ de cada resposta e o acumulado da conversa, calculado pela tabela de preços do provedor (com o desconto de cache).
+- **Citações com página** *(modelos Claude)* — as afirmações vêm com marcadores `[n]` e a lista de fontes ("Contestação, fl. 12") no rodapé; nos modelos Gemini a citação vem no próprio texto ("conforme a Contestação, fl. 12").
+- **Busca de jurisprudência** 🔍 — toggle que libera pesquisa na web (fontes oficiais: STF, STJ, Planalto, LexML…), com a consulta em andamento exibida em tempo real. Nos modelos Gemini usa o Google Search.
+- **Gerar .docx** 📄 *(modelos Claude)* — relatório do processo em Word de verdade (skill oficial da Anthropic), baixado direto pelo navegador.
+- **OCR nativo** — peças digitalizadas (imagem) são lidas pelo próprio modelo, sem OCR externo.
+
+### Seleção de peças
+
+- **Checkboxes por documento** — só o que você marcar é enviado; chips acima do campo mostram as peças no contexto (com `×` para remover) e o contador indica `x/y`.
+- **Atalho "principais"** — marca com um clique só as peças destacadas por categoria (decisões, audiências, petições e provas): o essencial da análise processual. "todas" marca a lista inteira; os dois respeitam a busca ativa.
+- **Peças categorizadas por cor** — decisões (dourado), audiências (verde), petições (azul) e provas (violeta) ganham destaque automático, com vocabulário criminal (inquérito, flagrante, interrogatório, pronúncia…) e cível (reconvenção, acordo, quesitos…).
+- **Busca na lista** — filtro instantâneo por título, ignorando acentos.
+- **Menção com `@`** — digite `@` no campo de pergunta para buscar e marcar peças sem sair do teclado (`↑↓` navega, `Enter` marca, `Esc` fecha).
+- **⟳ Carregar todas as peças** — o PJe só carrega os documentos conforme a linha do tempo é rolada; o botão rola tudo automaticamente para a lista ficar completa.
+- **Preview no hover** — nos modos largos, passar o mouse numa peça abre a pré-visualização do PDF/texto; "Abrir documento" busca peças ainda não carregadas.
+- **Ver na timeline** — cada peça tem um botão que localiza e destaca o documento na linha do tempo do PJe.
+
+### Contexto, custo e confiabilidade
+
+- **Medidor de contexto dinâmico** — barra mostra quanto da janela do modelo (tokens e páginas de PDF) a conversa ocupa, atualizada ao marcar/desmarcar peças **antes mesmo do envio**, com alertas em 70% e 90%. Desmarcar uma peça **libera contexto de verdade** no request seguinte.
 - **Files API + anexo incremental** — cada peça sobe uma única vez; os turnos seguintes reaproveitam o que já está na conversa.
-- **Modo expandido e tela cheia** — três tamanhos de painel para leitura confortável.
-- **Exportar a conversa** — baixe o diálogo em `.md` ou copie cada resposta com um clique.
-- **Prompt caching** — os PDFs anexados são cacheados pela API (~90% mais barato nos turnos seguintes).
+- **Cache automático** — os PDFs anexados são cacheados pela API (~90% mais barato nos turnos seguintes), nos dois provedores.
+- **Retry automático** — sobrecarga da API, limites momentâneos e quedas de conexão no meio do streaming são re-tentados sozinhos, sem duplicar texto na tela.
+- **PDF × HTML detectados automaticamente** — peças HTML viram texto puro (fração do custo de um PDF); a detecção confere o content-type **e** a assinatura `%PDF-` do binário.
 - **Erros amigáveis** — chave inválida, conta sem crédito, limites e sobrecarga explicados em português.
+
+### Interface
+
+- **Quatro modos de painel** — flutuante, expandido, tela cheia e **lateral** (o processo fica visível e clicável ao lado do chat).
+- **Ocultar a lista de peças** — nos modos expandido/tela cheia, um botão no cabeçalho colapsa a coluna de documentos para dar todo o espaço ao chat (a seleção continua valendo).
+- **Progresso por peça** — card com o estado de cada peça (aguardando → baixando → pronta) ao preparar a análise.
+- **Respostas formatadas** — markdown completo: tabelas, listas, títulos e citações.
+- **Exportar a conversa** — baixe o diálogo em `.md` ou copie cada resposta com um clique.
+
+## 🧠 Qual modelo escolher?
+
+| Modelo | Janela / PDF | Preço (US$/1M tokens) | Perfil |
+|---|---|---|---|
+| **Claude Haiku 4.5** (padrão) | 200 mil / 100 págs. | 1 / 5 | Rápido e barato; todos os recursos (citações `[n]`, .docx) |
+| **Claude Sonnet 5** | 1M / 600 págs. | 3 / 15 | Autos volumosos com todos os recursos |
+| **Claude Opus 4.8** | 1M / 600 págs. | 5 / 25 | Qualidade superior para análises delicadas |
+| **Claude Fable 5** | 1M / 600 págs. | 10 / 50 | O mais capaz — e o mais caro e lento |
+| **Gemini 3.6 Flash** | 1M / 1000 págs. | 1,50 / 7,50 | Rápido e multimodal, ótimo custo para autos grandes |
+| **Gemini 3.5 Flash-Lite** | 1M / 1000 págs. | 0,30 / 2,50 | O mais barato e veloz — triagens e resumos |
+
+> Nos modelos Gemini, as citações de página vêm no próprio texto (sem os marcadores `[n]` clicáveis) e a geração de .docx fica indisponível — esses recursos usam a API da Anthropic. Trocar entre Claude e Gemini no meio de uma conversa pede "Nova conversa".
 
 ## 🚀 Instalação
 
@@ -98,13 +127,15 @@ investigação aberta, um agente com MCP é o caminho — o próprio painel suge
 
 1. Faça login no PJe e abra os **autos de um processo** (tela da linha do tempo de documentos).
 2. Clique no botão **⚖️ Analisar com IA** no canto inferior direito da página.
-3. Marque as peças que quer incluir na análise — pela lista, ou digitando **`@`** no próprio campo de pergunta (ex.: `@contestação`).
-4. Pergunte — por exemplo:
+3. Clique em **⟳ Carregar todas as peças** (abaixo da lista) — o PJe só carrega os documentos conforme a linha do tempo é rolada; sem esse passo a lista pode estar incompleta.
+4. Marque as peças da análise — o atalho **principais** seleciona as destacadas por categoria de uma vez; a busca e o **`@`** no campo acham peças pelo nome (ex.: `@contestação`).
+5. Pergunte — por exemplo:
    - *"Resuma o pedido da inicial e os argumentos da contestação"*
    - *"Monte uma tabela com a linha do tempo dos atos"*
    - *"Quais provas foram juntadas e o que cada uma demonstra?"*
+6. Siga a conversa: **adicionar** peças no meio é barato (aproveita o cache); para **remover** várias ou mudar de assunto, prefira **⟲ Nova conversa**. O medidor e o custo ficam no rodapé; o selo mostra o modelo ativo.
 
-**Atalhos:** `@` cita peças no campo · `Enter` envia · `Shift+Enter` quebra linha · com o popup `@` aberto: `↑↓` navega, `Enter`/`Tab` marca, `Esc` fecha · botão `⤢` expande o painel · `↺` inicia nova conversa.
+**Atalhos:** `@` cita peças no campo · `Enter` envia · `Shift+Enter` quebra linha · com o popup `@` aberto: `↑↓` navega, `Enter`/`Tab` marca, `Esc` fecha · botões do cabeçalho: `⇄` painel largo, `▯` lateral, `⤢` tela cheia, `▤` oculta/exibe a lista de peças (modos largos), `↺` nova conversa.
 
 ### 🏛️ Todos os tribunais, sem configurar nada
 
@@ -163,8 +194,11 @@ flowchart LR
 - [x] Files API para processos muito volumosos
 - [x] Exportar a análise (copiar/.md/DOCX)
 - [x] Suporte a outros tribunais que usam PJe (TJs/TRFs/TRTs) — automático em qualquer `*.jus.br`
-- [ ] Carregamento automático da timeline completa (peças fora da rolagem)
+- [x] Carregamento automático da timeline completa (peças fora da rolagem)
+- [x] Segundo provedor de IA — Google Gemini (3.6 Flash / 3.5 Flash-Lite)
+- [x] Preview de peças, modo lateral e "ver na timeline"
 - [ ] Compaction para conversas muito longas
+- [ ] Limpeza de uploads antigos na Files API
 - [ ] Publicação na Chrome Web Store
 
 ## 🤝 Contribuindo

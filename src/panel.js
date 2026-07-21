@@ -169,6 +169,8 @@ var PjePanel = (function () {
       '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8h11M5 5.5L2.5 8 5 10.5M11 5.5L13.5 8 11 10.5"/></svg>',
     side:
       '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M9.8 2.5v11"/></svg>',
+    docsvis:
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M6.2 2.5v11"/></svg>',
     ver:
       '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="4.2"/><path d="M8 1.4v2.6M8 12v2.6M1.4 8h2.6M12 8h2.6"/></svg>',
     close:
@@ -264,6 +266,7 @@ var PjePanel = (function () {
           <span class="ttl">Assistente dos Autos</span>
           <button class="dl" title="Baixar a conversa em arquivo (.md)" aria-label="Baixar a conversa em arquivo">${SVG.download}</button>
           <button class="reset" title="Nova conversa (zera o chat e o contexto)" aria-label="Nova conversa">${SVG.reset}</button>
+          <button class="docsvis" title="Ocultar a lista de peças (mais espaço para o chat)" aria-label="Ocultar ou exibir a lista de peças" aria-pressed="false">${SVG.docsvis}</button>
           <button class="expand" title="Painel largo (mostra as peças na lateral)" aria-label="Painel largo">${SVG.expand}</button>
           <button class="side" title="Painel lateral (mantém o processo visível ao lado)" aria-label="Painel lateral">${SVG.side}</button>
           <button class="fs" title="Tela cheia" aria-label="Tela cheia">${SVG.fs}</button>
@@ -488,6 +491,38 @@ var PjePanel = (function () {
       aplicarModo(modoAtual() === "lateral" ? "flutuante" : "lateral")
     );
     backdrop.addEventListener("click", () => aplicarModo("flutuante"));
+
+    // Ocultar/exibir a coluna de peças nos modos expandido/tela cheia (mais
+    // espaço para o chat). Só VISUAL: os checkboxes seguem no DOM — seleção,
+    // chips, popup @ e envio continuam funcionando com a lista oculta. O
+    // botão só aparece nos modos expandidos (CSS) e a preferência persiste.
+    const docsVisBtn = $(".docsvis");
+    function setDocsOcultas(on, persistir) {
+      wrap.classList.toggle("docs-collapsed", on);
+      docsVisBtn.classList.toggle("on", on);
+      docsVisBtn.setAttribute("aria-pressed", String(!!on));
+      docsVisBtn.title = on
+        ? "Exibir a lista de peças"
+        : "Ocultar a lista de peças (mais espaço para o chat)";
+      hidePreview(); // popover ancorado numa row que deixou de existir na tela
+      if (persistir !== false) {
+        try {
+          chrome.storage.local.set({ docsOcultas: !!on });
+        } catch {
+          /* contexto da extensão invalidado — segue sem persistir */
+        }
+      }
+    }
+    docsVisBtn.addEventListener("click", () =>
+      setDocsOcultas(!wrap.classList.contains("docs-collapsed"))
+    );
+    try {
+      chrome.storage.local.get(["docsOcultas"], (v) => {
+        if (v && v.docsOcultas) setDocsOcultas(true, false);
+      });
+    } catch {
+      /* sem storage (harness de teste): lista visível */
+    }
 
     let resetCb = null;
     resetBtn.addEventListener("click", () => {
