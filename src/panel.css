@@ -600,14 +600,14 @@
 }
 .chip-x:hover { background: #d4e4ec; color: #17435a; }
 
-/* ----- Popup de menção @ ----- */
-.mention {
+/* ----- Popups de menção @ (peças) e / (prompts salvos) ----- */
+.mention, .slash {
   position: absolute; left: 12px; right: 12px; bottom: calc(100% + 8px);
   background: #fff; border: 1px solid var(--line); border-radius: 12px;
   box-shadow: 0 14px 38px rgba(5, 32, 46, 0.2);
   overflow: hidden; z-index: 5; animation: rise 0.12s ease-out;
 }
-.mention-hd {
+.mention-hd, .slash-hd {
   display: flex; justify-content: space-between; align-items: center; gap: 8px;
   padding: 8px 12px 7px; border-bottom: 1px solid #e3edf3;
   font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
@@ -641,7 +641,7 @@
   font-family: inherit; background: #edf3f7; border: 1px solid var(--line);
   border-radius: 4px; padding: 0 4px; font-size: 9.5px; color: var(--text);
 }
-.mention-list { max-height: 216px; overflow-y: auto; padding: 4px; }
+.mention-list, .slash-list { max-height: 216px; overflow-y: auto; padding: 4px; }
 .mrow {
   display: flex; align-items: center; gap: 8px;
   padding: 7px 9px; border-radius: 8px; cursor: pointer;
@@ -666,6 +666,19 @@
   font-size: 10px; font-weight: 700; color: #2e7d4f;
   background: #eaf4ee; border-radius: 999px; padding: 2px 8px;
 }
+/* Linhas do popup "/": título + prévia do texto em duas linhas */
+.mrow.srow { align-items: flex-start; }
+.mrow .scol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mrow .scol .t { flex: none; font-weight: 600; }
+.mrow-sub {
+  font-size: 11px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Ações fixas no rodapé do popup "/" (salvar texto atual / gerenciar) */
+.mrow-acao { color: var(--pje-2); font-weight: 600; border-top: 1px dashed var(--line); margin-top: 3px; }
+.mrow-acao + .mrow-acao { border-top: none; margin-top: 0; }
+/* Ícone ✦ dos prompts salvos (popup "/" e chip do composer) */
+.pchip-i { flex: none; color: var(--pje-2); font-size: 12px; line-height: 1; }
 /* ----- Preview de peça no hover (modos expandido e lateral) ----- */
 .preview {
   position: fixed; z-index: 2147483647;
@@ -715,6 +728,45 @@
 }
 .preview-ft .preview-tab { margin: 0 0 0 auto; padding: 3px 10px; font-size: 11px; }
 
+/* ----- Chip de prompt salvo: faixa FUNDIDA à caixa de entrada -----
+   A .promptbar emenda no topo da .inrow (radius superior + border-bottom
+   removida + margin negativa): o chip parece estar dentro do composer,
+   como anexo de e-mail, sem mexer na estrutura do textarea. */
+.promptbar {
+  position: relative; /* âncora do tooltip de prévia */
+  display: flex; align-items: center; gap: 8px;
+  background: #eaf4fa; border: 1px solid var(--line); border-bottom: none;
+  border-radius: 12px 12px 0 0; padding: 6px 9px; margin-bottom: -1px;
+  animation: chip-in 0.18s ease-out;
+}
+.promptbar-hint {
+  flex: 1; min-width: 0; text-align: right;
+  font-size: 10.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.inrow.com-prompt { border-top-left-radius: 0; border-top-right-radius: 0; }
+.pchip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #fff; border: 1px solid var(--line); color: #2b5568;
+  border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 11.5px;
+  max-width: 100%;
+}
+.pchip-t {
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-weight: 700;
+}
+/* Prévia do texto no hover: tooltip 100% CSS, ancorado na .promptbar
+   (o .pchip não é positioned de propósito — o tooltip abre alinhado à faixa) */
+.pchip-tip {
+  display: none; position: absolute; left: 0; bottom: calc(100% + 8px);
+  z-index: 6; width: min(440px, 100%); max-height: 190px; overflow: hidden;
+  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 14px 38px rgba(5, 32, 46, 0.2);
+  padding: 9px 11px; font-size: 12px; line-height: 1.5; color: var(--text);
+  white-space: pre-wrap; overflow-wrap: break-word;
+}
+.pchip:hover .pchip-tip { display: block; }
+
 .inrow {
   display: flex; gap: 8px; align-items: flex-end;
   border: 1px solid var(--line); border-radius: 12px; padding: 6px 6px 6px 10px;
@@ -740,16 +792,22 @@
 .doclist::-webkit-scrollbar,
 .msgs::-webkit-scrollbar,
 .mention-list::-webkit-scrollbar,
+.slash-list::-webkit-scrollbar,
+.plib-list::-webkit-scrollbar,
 .preview-txt::-webkit-scrollbar,
 .chips::-webkit-scrollbar { width: 8px; }
 .doclist::-webkit-scrollbar-track,
 .msgs::-webkit-scrollbar-track,
 .mention-list::-webkit-scrollbar-track,
+.slash-list::-webkit-scrollbar-track,
+.plib-list::-webkit-scrollbar-track,
 .preview-txt::-webkit-scrollbar-track,
 .chips::-webkit-scrollbar-track { background: transparent; }
 .doclist::-webkit-scrollbar-thumb,
 .msgs::-webkit-scrollbar-thumb,
 .mention-list::-webkit-scrollbar-thumb,
+.slash-list::-webkit-scrollbar-thumb,
+.plib-list::-webkit-scrollbar-thumb,
 .preview-txt::-webkit-scrollbar-thumb,
 .chips::-webkit-scrollbar-thumb {
   background: #c7d6de; border-radius: 4px;
@@ -758,6 +816,8 @@
 .doclist::-webkit-scrollbar-thumb:hover,
 .msgs::-webkit-scrollbar-thumb:hover,
 .mention-list::-webkit-scrollbar-thumb:hover,
+.slash-list::-webkit-scrollbar-thumb:hover,
+.plib-list::-webkit-scrollbar-thumb:hover,
 .preview-txt::-webkit-scrollbar-thumb:hover { background-color: #a8c0ce; }
 
 /* ---------- Citações das peças (sobrescritos [n] + rodapé de fontes) ---------- */
@@ -821,12 +881,12 @@
   background: #e9f2f8; border-color: var(--pje); color: var(--text);
   font-weight: 600; box-shadow: inset 0 0 0 1px rgba(0, 120, 170, 0.35);
 }
-.btn-docx {
+.btn-docx, .btn-plib {
   border: 1px solid var(--line); background: #fff; color: var(--muted);
   border-radius: 999px; padding: 3px 11px; font-size: 11.5px; cursor: pointer;
   transition: all 0.15s;
 }
-.btn-docx:hover { border-color: var(--pje); color: var(--text); }
+.btn-docx:hover, .btn-plib:hover { border-color: var(--pje); color: var(--text); }
 .btn-docx.on {
   background: #e9f2f8; border-color: var(--pje); color: var(--text);
   font-weight: 600; box-shadow: inset 0 0 0 1px rgba(0, 120, 170, 0.35);
@@ -865,6 +925,93 @@
 .docxbar-x:hover { background: #ddeaf2; color: var(--text); }
 /* o botão Enviar vira "📄 Gerar" — halo azul para marcar a mudança */
 .send.docx { box-shadow: 0 0 0 3px rgba(0, 120, 170, 0.28); }
+
+/* ---------- Gerenciador de prompts salvos (modal no Shadow DOM) ---------- */
+.plib {
+  position: absolute; inset: 0; z-index: 7;
+  background: rgba(5, 32, 46, 0.45);
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+}
+.plib-card {
+  width: min(560px, 96%); max-height: 92%;
+  display: flex; flex-direction: column;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(5, 32, 46, 0.3); overflow: hidden;
+  animation: rise 0.12s ease-out; outline: none;
+}
+.plib-hd {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; background: var(--paper); border-bottom: 1px solid var(--line);
+}
+.plib-hd .t { flex: 1; min-width: 0; font-weight: 700; font-size: 13px; color: var(--ink); }
+.plib-new {
+  flex: none; border: 1px solid var(--pje); background: #fff; color: var(--pje-2);
+  border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.plib-new:hover { background: #e9f2f8; }
+.plib-close {
+  flex: none; border: none; background: transparent; cursor: pointer;
+  color: #7f97a5; width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0;
+}
+.plib-close:hover { background: #d4e4ec; color: #17435a; }
+.plib-list {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 8px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.plib-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff;
+}
+.plib-row:hover { background: var(--paper); }
+.plib-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.plib-t {
+  font-weight: 700; font-size: 12.5px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.plib-prev {
+  font-size: 11px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.plib-acts { flex: none; display: flex; gap: 5px; }
+.plib-acts button {
+  border: 1px solid var(--line); background: #fff; color: var(--pje-2);
+  border-radius: 7px; padding: 3px 9px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.plib-acts button:hover { background: #e9f2f8; border-color: var(--pje); }
+/* exclusão em dois cliques: o botão "armado" avisa em laranja */
+.plib-acts .plib-del.arm,
+.plib-acts .plib-del.arm:hover { border-color: #b4552d; color: #b4552d; background: #fbeee6; }
+.plib-empty {
+  padding: 24px 16px; text-align: center; color: var(--muted);
+  font-size: 12.5px; line-height: 1.6;
+}
+.plib-form { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
+.plib-form input, .plib-form textarea {
+  font: inherit; font-size: 13px; color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+  outline: none; background: #fff;
+}
+.plib-form input:focus, .plib-form textarea:focus {
+  border-color: var(--pje); box-shadow: 0 0 0 3px rgba(0, 120, 170, 0.15);
+}
+.plib-form textarea { min-height: 130px; resize: vertical; }
+.plib-cnt { font-size: 10.5px; color: var(--muted); text-align: right; }
+.plib-cnt.estouro { color: #b4552d; font-weight: 700; }
+.plib-err { font-size: 12px; color: #b4552d; font-weight: 600; }
+.plib-err:empty { display: none; }
+.plib-form-acts { display: flex; gap: 8px; justify-content: flex-end; }
+.plib-cancel {
+  border: 1px solid var(--line); background: #fff; color: var(--muted);
+  border-radius: 8px; padding: 7px 12px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.plib-cancel:hover { border-color: var(--pje); color: var(--text); }
+.plib-save {
+  background: linear-gradient(180deg, var(--pje), var(--pje-2)); color: #fff;
+  border: none; border-radius: 8px; padding: 7px 16px; font-weight: 700;
+  cursor: pointer; font-family: inherit;
+}
 
 /* ---------- Raciocínio (thinking) colapsável ---------- */
 .msg .think {

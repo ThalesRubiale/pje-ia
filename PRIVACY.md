@@ -19,6 +19,7 @@ são enviados diretamente do seu navegador à API do provedor de IA que você es
 | **Peças processuais que você marcar** (PDFs/HTML dos autos) e **suas mensagens de chat** | Análise por IA — é o propósito único da extensão | Diretamente à API do provedor escolhido por você: **Anthropic** (`api.anthropic.com`) ou **Google** (`generativelanguage.googleapis.com`). Nenhum outro serviço intermedia. |
 | **Chaves de API** (Anthropic e/ou Google) fornecidas por você | Autenticar as chamadas à API do respectivo provedor | Armazenadas **somente** no `chrome.storage.local` do seu navegador (não sincronizam entre dispositivos). Enviadas exclusivamente ao provedor correspondente, como cabeçalho de autenticação. Nunca chegam ao contexto da página do PJe. |
 | **Preferências** (modelo, nível de raciocínio, instruções personalizadas, modo de layout) | Funcionamento da interface | Somente `chrome.storage.local`. As instruções personalizadas são anexadas ao prompt enviado ao provedor escolhido. |
+| **Prompts salvos** (título e texto que você escreve na biblioteca de prompts) | Reaproveitar instruções suas nas conversas | `chrome.storage.sync`: ficam no seu navegador e, se você usar o Chrome com uma conta Google e a sincronização ligada, o próprio Chrome os replica nos seus outros dispositivos (o desenvolvedor não tem acesso). O texto do prompt vai ao provedor de IA junto da mensagem quando você o usa. |
 | **Sessão do PJe** (cookies do tribunal) | Baixar as peças que você marcar, pelo mesmo mecanismo que o próprio PJe usa | Os cookies são gerenciados pelo navegador e **nunca são lidos, armazenados ou exportados pela extensão** — as requisições ao tribunal usam a sessão já aberta por você, e o conteúdo baixado fica em cache temporário na memória da aba. |
 
 Nenhum dado além dos listados acima é tratado. A coleta limita-se ao estritamente
@@ -74,6 +75,11 @@ de ajuda.
 - Todos os dados persistentes (chaves e preferências) ficam no `chrome.storage.local`
   do seu navegador. Caches de sessão (uploads, peças baixadas) vivem na memória da aba
   ou no `chrome.storage.session` e desaparecem ao fechar o navegador.
+- A única exceção são os **prompts salvos**, gravados no `chrome.storage.sync` para
+  acompanharem você em outros dispositivos: quem os replica é o próprio Chrome, pela
+  sincronização da sua conta Google. Sem conta ou com a sincronização desligada, eles
+  ficam apenas neste navegador. Não coloque dados sigilosos dos autos no texto de um
+  prompt salvo — a biblioteca serve para instruções genéricas e reutilizáveis.
 - As chaves de API vivem apenas no *service worker* da extensão e **nunca são expostas
   ao contexto da página** do PJe.
 - Toda comunicação usa HTTPS.

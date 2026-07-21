@@ -58,6 +58,7 @@ investigação aberta, um agente com MCP é o caminho — o próprio painel suge
 - **Citações com página** *(modelos Claude)* — as afirmações vêm com marcadores `[n]` e a lista de fontes ("Contestação, fl. 12") no rodapé; nos modelos Gemini a citação vem no próprio texto ("conforme a Contestação, fl. 12").
 - **Busca de jurisprudência** 🔍 — toggle que libera pesquisa na web (fontes oficiais: STF, STJ, Planalto, LexML…), com a consulta em andamento exibida em tempo real. Nos modelos Gemini usa o Google Search.
 - **Gerar .docx** 📄 *(modelos Claude)* — relatório do processo em Word de verdade (skill oficial da Anthropic), baixado direto pelo navegador.
+- **Biblioteca de prompts** ✦ — salve instruções que você repete (título + texto) e insira-as digitando **`/`** no início do campo: o prompt vira um chip elegante acima da caixa de texto e é enviado antes da sua mensagem. Gerenciamento (criar/editar/excluir) no botão **✦ Prompts**, e os prompts acompanham você em outros navegadores pela sincronização da conta Google.
 - **OCR nativo** — peças digitalizadas (imagem) são lidas pelo próprio modelo, sem OCR externo.
 
 ### Seleção de peças
@@ -173,7 +174,8 @@ flowchart LR
 | Módulo | Papel |
 |---|---|
 | `src/pje.js` | Lista as peças na timeline e baixa cada uma pelo endpoint REST do PJe (sessão do usuário). Ativa peças "não abertas" automaticamente. |
-| `src/panel.js` / `panel.css` | UI do chat em Shadow DOM (isolada do CSS do PJe): seletor de peças, menção `@`, chips de contexto, card de progresso e renderizador markdown próprio e seguro. |
+| `src/panel.js` / `panel.css` | UI do chat em Shadow DOM (isolada do CSS do PJe): seletor de peças, menção `@`, prompts salvos `/`, chips de contexto, card de progresso e renderizador markdown próprio e seguro. |
+| `src/prompts.js` | Biblioteca de prompts do usuário: CRUD no `chrome.storage.sync` (um item por prompt), sincronizado entre os navegadores da mesma conta Google. |
 | `src/content.js` | Orquestra: downloads paralelos, cache por peça, prompt caching, conversa multi-turno. |
 | `src/background.js` + `claude.js` / `gemini.js` | Service worker que guarda as chaves e chama a API do provedor do modelo escolhido (Anthropic ou Google) com streaming. **As chaves nunca são expostas à página.** |
 | `src/popup.html` | Configuração em 1 clique no ícone da barra (chave, modelo, guia de primeiros passos). |
@@ -198,6 +200,7 @@ flowchart LR
 - [x] Carregamento automático da timeline completa (peças fora da rolagem)
 - [x] Segundo provedor de IA — Google Gemini (3.6 Flash / 3.5 Flash-Lite)
 - [x] Preview de peças, modo lateral e "ver na timeline"
+- [x] Biblioteca de prompts do usuário (`/` no campo, sincronizada entre navegadores)
 - [ ] Compaction para conversas muito longas
 - [ ] Limpeza de uploads antigos na Files API
 - [ ] Publicação na Chrome Web Store — **enviada para análise em 21/07/2026** (aguardando revisão)

@@ -25,7 +25,8 @@ Content scripts injetados nesta ordem
 | Arquivo | Global | Papel |
 |---|---|---|
 | `src/pje.js` | `PJE` | Acesso ao PJe: lista peças da timeline (`#divTimeLine`), baixa cada uma pelo endpoint REST autenticado por cookie de sessão. |
-| `src/panel.js` | `PjePanel` | Toda a UI (chat, seletor de peças, chips, popup `@`, card de progresso), isolada em **Shadow DOM**. CSS carregado de `src/panel.css` via `web_accessible_resources`. |
+| `src/prompts.js` | `PLIB` | Biblioteca de prompts do usuário: CRUD sobre `chrome.storage.sync` (um item por prompt, `plib:<id>`) + `aoMudar` para propagação entre abas/dispositivos. |
+| `src/panel.js` | `PjePanel` | Toda a UI (chat, seletor de peças, chips, popups `@` e `/`, card de progresso), isolada em **Shadow DOM**. CSS carregado de `src/panel.css` via `web_accessible_resources`. |
 | `src/content.js` | — | Orquestração: downloads com concorrência 3, cache por peça, montagem dos blocos da API, conversa multi-turno, streaming via `Port`. |
 
 O worker (`src/background.js` + `src/claude.js`, ES modules) guarda a chave da API e faz o
@@ -438,6 +439,45 @@ texto e o checkbox correspondente é alternado. Detalhes fáceis de quebrar:
   pre` e a query CRUA (sem trim) para o espaço final mover o cursor; no
   vazio o `order` põe o cursor ANTES do placeholder.
 
+## Biblioteca de prompts — popup `/` e chip (prompts.js + panel.js)
+
+Prompts reutilizáveis do usuário (título + texto): digitar `/` no campo abre um popup
+com os prompts salvos; selecionar liga um CHIP na `.promptbar` (faixa fundida ao topo
+da `.inrow`) e o texto do prompt PRECEDE a mensagem **no envio**. CRUD num modal
+(`.plib`) dentro do Shadow DOM, aberto pelo botão `✦ Prompts` da barra de ferramentas
+ou pelas linhas de ação do próprio popup. Regras que não podem quebrar:
+
+- **Gatilho só no INÍCIO da mensagem** (`findSlashToken`, regex `^\s*\/([^/@\n]*)$`
+  sobre o texto antes do caret): a barra é onipresente em texto jurídico
+  (`01/02/2026`, `art. 5º/CF`, `e/ou`) — a regra do `@` (dispara após espaço) geraria
+  falso positivo a cada frase. Um segundo `/` ou um `@` na query fecham o popup por
+  construção. Ambos os popups nunca abrem juntos: os tokens são disjuntos.
+- **A concatenação acontece no PAINEL** (`montarTextoEnvio`, `prompt + "\n\n" + texto`;
+  campo vazio envia o prompt sozinho): `sendCb`/`gerarDocCb` seguem recebendo
+  `(texto, ids)` e **content.js/protocolo/histórico não mudam em nada**. A bolha do
+  usuário mostra o texto combinado de propósito — é o que foi à API.
+- **Um prompt por mensagem**: `promptAtivo` é objeto único; escolher outro substitui o
+  chip; o envio o consome (`setPromptAtivo(null)`), e "Nova conversa" também o solta.
+- **`storage.sync`, um item por prompt** (`plib:<id>`): a cota é de 8.192 B POR ITEM —
+  `PLIB.tamanhoOk` valida os bytes REAIS com `TextEncoder` (não `.length`: texto
+  jurídico é acentuado, multibyte) e o `set` sempre confere `chrome.runtime.lastError`
+  (cota total/rate-limit). `AREA` em prompts.js é o único ponto de troca sync↔local —
+  trocar não migra os dados. O `aoMudar` filtra a área `sync` + prefixo, sem colidir
+  com o `storage.onChanged` de `"local"` do content.js.
+- **Espelho do popup `@`**: rows usam `mousedown`+`preventDefault` (o blur do textarea
+  fecha em 120 ms), `updateSlash` roda nos MESMOS 4 gatilhos (`input`, `click`, `keyup`
+  de setas, `blur`) e o bloco do `/` no `keydown` vem ANTES do `@` e do Enter genérico.
+  Sem resultado na busca o teclado é liberado (Enter envia a mensagem que começa com
+  "/" literal); as ações fixas seguem clicáveis pelo mouse.
+- **Esc em cascata**: `/` → `@` → modal (o keydown do `.plib-card` faz
+  `stopPropagation`, senão cancelaria o modo docx junto) → modo docx.
+- **Exclusão em dois cliques** ("excluir" → "excluir?"), nunca `confirm()` nativo: o
+  dialog da página vive fora do Shadow DOM e congela a extensão.
+- **docx + prompt convivem**: com chip ativo e campo vazio, o botão `.btn-docx` NÃO
+  injeta a `INSTRUCAO_DOCX_PADRAO` (o prompt já é a instrução do documento).
+- `PLIB` ausente (harness sem o content script) esconde o botão e desliga a feature
+  em silêncio — nada quebra.
+
 ## Geração de .docx (skill oficial)
 
 Botão "📄 Gerar .docx" no painel liga o **modo documento** (`docxMode` em `panel.js`):
@@ -462,9 +502,14 @@ organização (US$ 0,05/h depois), além dos tokens.
 - Não há bundler. Valide sintaxe com `node --check src/*.js`. Testes de unidade fora do
   navegador no scratchpad da sessão: `renderMd` (escape-first + citações) roda com
   `eval` do `panel.js`; o acumulador SSE de `claude.js` roda com `fetch` fake devolvendo
-  um `ReadableStream` de eventos simulados (chat com citação, `pause_turn`, docx).
+  um `ReadableStream` de eventos simulados (chat com citação, `pause_turn`, docx);
+  `_findSlashToken`/`_montarTextoEnvio` (gatilho `/` e merge prompt+texto) também saem
+  do `eval` do `panel.js`, e `PLIB` roda com um stub de `chrome.storage.sync`
+  (get/set/remove + `onChanged` manual).
 - **Testar a UI sem PJe**: criar um HTML que stub `window.chrome`
-  (`runtime.getURL`, `storage.local.get`, `runtime.connect`) e carregue `src/panel.js`,
+  (`runtime.getURL`, `storage.local.get`, `storage.sync` completo — sem ele a
+  biblioteca de prompts fica invisível —, `runtime.connect`) e carregue
+  `src/prompts.js` + `src/panel.js`,
   servido por HTTP local (fetch do CSS falha em `file://`). Chamar `PjePanel.mount()`,
   `setConfigured(true)`, `setDocs([...])` com peças fictícias. As APIs `startPrep` /
   `setPrepState` / `endPrep` / `addMessage` permitem simular todo o fluxo visual.

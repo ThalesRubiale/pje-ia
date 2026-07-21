@@ -252,6 +252,28 @@ var PjePanel = (function () {
     return (n / 1000).toFixed(n < 10000 ? 1 : 0).replace(".", ",") + " mil";
   }
 
+  // Token do popup "/" (prompts salvos): "/" só dispara como PRIMEIRO
+  // caractere não-branco da mensagem — diferente do "@", a barra é
+  // onipresente no texto jurídico (01/02/2026, art. 5º/CF, "e/ou") e no
+  // meio do texto ela nunca é comando. A query não aceita "\n", "@" nem
+  // outra "/": um segundo "/" (data/URL colada no início) ou um "@" (o
+  // usuário passou a citar peça) fecham o popup sozinhos, por construção.
+  function findSlashToken(value, pos) {
+    const before = String(value).slice(0, pos);
+    const m = before.match(/^\s*\/([^/@\n]*)$/);
+    if (!m) return null;
+    return { start: before.length - m[1].length - 1, end: pos, query: m[1] };
+  }
+
+  // Texto que vai à API quando há prompt salvo ativo: o prompt PRECEDE o
+  // que o usuário digitou (linha em branco entre os dois); com o campo
+  // vazio, vai o prompt sozinho. Sem prompt, o texto passa intocado.
+  function montarTextoEnvio(promptTexto, textoLivre) {
+    if (!promptTexto) return textoLivre;
+    const livre = String(textoLivre || "").trim();
+    return livre ? promptTexto + "\n\n" + livre : promptTexto;
+  }
+
   function mount() {
     const host = document.createElement("div");
     host.id = "pje-ia-host";
@@ -334,6 +356,16 @@ var PjePanel = (function () {
                 </div>
                 <div class="mention-list" role="listbox"></div>
               </div>
+              <div class="slash" hidden>
+                <div class="slash-hd">
+                  <span>Inserir prompt salvo</span>
+                  <span class="mention-keys"><kbd>↑↓</kbd> navegar <kbd>↵</kbd> inserir <kbd>esc</kbd> fechar</span>
+                </div>
+                <div class="mention-q" aria-hidden="true">
+                  ${SVG.lupa}<span class="mq-t"></span><span class="mq-caret"></span><span class="mq-n"></span>
+                </div>
+                <div class="slash-list" role="listbox"></div>
+              </div>
               <div class="status" aria-live="polite"></div>
               <div class="alertbar" role="alert" hidden></div>
               <div class="gauge" hidden title="Quanto do limite do modelo esta conversa já ocupa (tokens e páginas de PDF). Ao encher, desmarque peças (libera espaço na hora) ou clique em ⟲ para começar uma nova conversa.">
@@ -349,6 +381,7 @@ var PjePanel = (function () {
                 <div class="tools">
                   <button class="tgl-search" aria-pressed="false" title="Liga/desliga a busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…). Com a busca ligada, escreva a pergunta e use o botão Enviar normalmente.">🔍 Jurisprudência</button>
                   <button class="btn-docx" title="Liga o modo documento: a instrução aparece no campo (edite à vontade) e o botão Enviar vira “Gerar” — clique nele (ou Enter) para gerar o Word (.docx) com base nas peças marcadas.">📄 Gerar .docx</button>
+                  <button class="btn-plib" title="Seus prompts salvos: crie instruções reutilizáveis (título + texto) e insira-as na conversa digitando “/” no início do campo de mensagem. Sincronizam entre navegadores logados na mesma conta Google.">✦ Prompts</button>
                   <button class="modelo-badge" hidden title="Modelo de IA em uso nesta conversa — clique para trocar nas opções da extensão"></button>
                 </div>
               </div>
@@ -356,12 +389,33 @@ var PjePanel = (function () {
                 <span class="docxbar-t">📄 <b>Modo documento ligado</b> — revise a instrução abaixo e clique em <b>Gerar</b>: a resposta será um arquivo Word (.docx), pode levar 1–2 min.</span>
                 <button class="docxbar-x" title="Cancelar a geração de documento (Esc)">✕</button>
               </div>
+              <div class="promptbar" hidden></div>
               <div class="inrow">
                 <textarea class="in" rows="1" placeholder="Pergunte sobre as peças… (@ cita uma peça)"></textarea>
                 <button class="send">Enviar</button>
               </div>
-              <div class="hint-key"><b>@</b> cita peças &nbsp;·&nbsp; <b>Enter</b> envia &nbsp;·&nbsp; <b>Shift+Enter</b> quebra linha &nbsp;·&nbsp; <b>📄 .docx</b>: clique no botão, revise a instrução e clique em <b>Gerar</b></div>
+              <div class="hint-key"><b>@</b> cita peças &nbsp;·&nbsp; <b>/</b> insere um prompt salvo &nbsp;·&nbsp; <b>Enter</b> envia &nbsp;·&nbsp; <b>Shift+Enter</b> quebra linha &nbsp;·&nbsp; <b>📄 .docx</b>: clique no botão, revise a instrução e clique em <b>Gerar</b></div>
               <div class="cite-note" hidden>ℹ️ Modelos Gemini: as citações de página aparecem no próprio texto da resposta (ex.: “conforme a Contestação, fl. 12”), sem os marcadores [n] automáticos dos modelos Claude.</div>
+            </div>
+          </div>
+        </div>
+        <div class="plib" hidden>
+          <div class="plib-card" role="dialog" aria-modal="true" aria-label="Prompts salvos" tabindex="-1">
+            <div class="plib-hd">
+              <span class="t">✦ Prompts salvos</span>
+              <button class="plib-new">✚ Novo</button>
+              <button class="plib-close" title="Fechar (Esc)" aria-label="Fechar o gerenciador de prompts">✕</button>
+            </div>
+            <div class="plib-list"></div>
+            <div class="plib-form" hidden>
+              <input type="text" class="plib-ft" maxlength="60" placeholder="Título do prompt (ex.: Relatório de audiência)" aria-label="Título do prompt">
+              <textarea class="plib-fx" placeholder="Texto do prompt — a instrução completa, enviada no início da mensagem quando você usar este prompt…" aria-label="Texto do prompt"></textarea>
+              <div class="plib-cnt"></div>
+              <div class="plib-err" role="alert"></div>
+              <div class="plib-form-acts">
+                <button class="plib-cancel">Cancelar</button>
+                <button class="plib-save">Salvar</button>
+              </div>
             </div>
           </div>
         </div>
@@ -762,8 +816,10 @@ var PjePanel = (function () {
           "Para gerar o documento, primeiro marque as peças que devem embasá-lo.";
         return;
       }
-      // preserva o que o usuário já digitou; senão, oferece a instrução padrão
-      if (!inEl.value.trim()) {
+      // preserva o que o usuário já digitou; senão, oferece a instrução
+      // padrão — SALVO quando há prompt salvo ativo (chip): ele já é a
+      // instrução do documento, injetar a padrão duplicaria comandos
+      if (!inEl.value.trim() && !promptAtivo) {
         inEl.value = INSTRUCAO_DOCX_PADRAO;
         autoresize();
       }
@@ -1409,21 +1465,420 @@ var PjePanel = (function () {
       inEl.setSelectionRange(caret, caret);
     }
 
+    // -------------------------------------------------------------------------
+    // Biblioteca de prompts: "/" no INÍCIO da mensagem abre o popup com os
+    // prompts salvos (PLIB, storage.sync); selecionar remove o token e liga o
+    // CHIP na .promptbar — o texto do prompt precede a mensagem só no envio,
+    // nunca é despejado no textarea. Gerenciador (CRUD) no modal .plib.
+    // -------------------------------------------------------------------------
+    const slashEl = $(".slash");
+    const slashList = $(".slash-list");
+    const slashQT = $(".slash .mq-t");
+    const slashQN = $(".slash .mq-n");
+    const slashQC = $(".slash .mq-caret");
+    const promptbar = $(".promptbar");
+    const inrowEl = $(".inrow");
+    const btnPlib = $(".btn-plib");
+    const plibEl = $(".plib");
+    const plibCard = $(".plib-card");
+    const plibListEl = $(".plib-list");
+    const plibForm = $(".plib-form");
+    const plibFT = $(".plib-ft");
+    const plibFX = $(".plib-fx");
+    const plibCnt = $(".plib-cnt");
+    const plibErr = $(".plib-err");
+
+    let promptsLib = []; // espelho ordenado de PLIB.listar
+    let slash = null; // {start, end, items, idx, query, total, extra}
+    let promptAtivo = null; // {id, titulo, texto} — no máximo UM por mensagem
+    let plibEditId = null; // id em edição no form (null = novo)
+    let plibDelArm = null; // id com exclusão "armada" (2º clique confirma)
+
+    // PLIB é content script carregado antes deste — mas o harness de teste
+    // pode não incluí-lo: sem ele a feature some em silêncio, nada quebra.
+    const temPlib = typeof PLIB !== "undefined";
+    if (temPlib) {
+      PLIB.listar((ps) => {
+        promptsLib = ps;
+      });
+      // mudanças em qualquer aba (ou vindas do sync de outra máquina)
+      PLIB.aoMudar((ps) => {
+        promptsLib = ps;
+        if (slash) updateSlash();
+        if (!plibEl.hidden) renderPlibList();
+      });
+    } else {
+      btnPlib.hidden = true;
+    }
+
+    function previaDe(texto) {
+      const l =
+        String(texto || "")
+          .split("\n")
+          .map((s) => s.trim())
+          .find(Boolean) || "";
+      return l.length > 90 ? l.slice(0, 90) + "…" : l;
+    }
+
+    function closeSlash() {
+      slash = null;
+      slashEl.hidden = true;
+    }
+
+    function keyDeItem(it) {
+      return it.tipo === "prompt" ? "p:" + it.p.id : it.tipo;
+    }
+
+    function updateSlash() {
+      if (!temPlib) return;
+      const tok = findSlashToken(inEl.value, inEl.selectionStart);
+      if (!tok) return closeSlash();
+      const q = norm(tok.query.trim());
+      const all = promptsLib.filter((p) => !q || norm(p.titulo).includes(q));
+      // mesma regra do popup @: busca sem resultado não fecha na hora (o
+      // estado vazio orienta), mas acima de 20 chars o usuário está
+      // escrevendo uma frase que começa com "/", não buscando
+      if (!all.length && tok.query.trim().length > 20) return closeSlash();
+      const items = all
+        .slice(0, MENTION_MAX)
+        .map((p) => ({ tipo: "prompt", p }));
+      // ações fixas no rodapé: salvar o texto atual (quando há texto além
+      // do token) e abrir o gerenciador (vira o CTA de criação na 1ª vez)
+      const resto = (inEl.value.slice(0, tok.start) + inEl.value.slice(tok.end)).trim();
+      if (resto) items.push({ tipo: "salvar" });
+      items.push({ tipo: "gerenciar" });
+      const prevKey =
+        slash && slash.items[slash.idx] ? keyDeItem(slash.items[slash.idx]) : null;
+      const keepIdx = items.findIndex((it) => keyDeItem(it) === prevKey);
+      slash = {
+        start: tok.start,
+        end: tok.end,
+        items,
+        idx: keepIdx >= 0 ? keepIdx : 0,
+        query: tok.query, // CRU (sem trim): o espelho mostra até o espaço final
+        total: all.length,
+        extra: all.length - Math.min(all.length, MENTION_MAX),
+      };
+      renderSlash();
+    }
+
+    function renderSlash() {
+      slashQT.classList.toggle("vazio", !slash.query);
+      slashQT.textContent = slash.query || "digite para buscar pelo título do prompt…";
+      // cursor falso: sólido enquanto digita, piscando parado (igual ao @)
+      slashQC.style.animation = "none";
+      void slashQC.offsetWidth;
+      slashQC.style.animation = "";
+      slashQN.textContent =
+        slash.total === 0
+          ? "nenhum prompt"
+          : slash.total === 1
+            ? "1 prompt"
+            : slash.total + " prompts";
+      slashList.innerHTML = "";
+      if (slash.total === 0 && slash.query.trim()) {
+        const vazio = document.createElement("div");
+        vazio.className = "mrow-more";
+        vazio.textContent =
+          "Nenhum prompt com esse título — apague para ver todos (esc fecha).";
+        slashList.appendChild(vazio);
+      } else if (slash.total === 0 && !promptsLib.length) {
+        const vazio = document.createElement("div");
+        vazio.className = "mrow-more";
+        vazio.textContent =
+          "Você ainda não tem prompts salvos — instruções reutilizáveis que entram no início da mensagem.";
+        slashList.appendChild(vazio);
+      }
+      slash.items.forEach((it, i) => {
+        const row = document.createElement("div");
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", i === slash.idx ? "true" : "false");
+        if (it.tipo === "prompt") {
+          row.className = "mrow srow" + (i === slash.idx ? " active" : "");
+          row.innerHTML =
+            '<span class="pchip-i" aria-hidden="true">✦</span>' +
+            '<span class="scol"><span class="t" title="' + escapeHtml(it.p.titulo) + '">' +
+            escapeHtml(it.p.titulo) +
+            '</span><span class="mrow-sub">' + escapeHtml(previaDe(it.p.texto)) +
+            "</span></span>";
+        } else {
+          row.className = "mrow mrow-acao" + (i === slash.idx ? " active" : "");
+          row.textContent =
+            it.tipo === "salvar"
+              ? "✚ Salvar o texto atual como prompt…"
+              : promptsLib.length
+                ? "⚙ Gerenciar prompts…"
+                : "✚ Criar seu primeiro prompt…";
+        }
+        // mousedown (não click) para agir antes do blur do textarea
+        row.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          pickSlash(i);
+        });
+        row.addEventListener("mouseenter", () => {
+          if (slash && slash.idx !== i) {
+            slash.idx = i;
+            renderSlash();
+          }
+        });
+        slashList.appendChild(row);
+      });
+      if (slash.extra > 0) {
+        const more = document.createElement("div");
+        more.className = "mrow-more";
+        more.textContent =
+          "… e mais " + slash.extra + " prompts — continue digitando para filtrar";
+        slashList.appendChild(more);
+      }
+      slashEl.hidden = false;
+      const act = slashList.querySelector(".mrow.active");
+      if (act) act.scrollIntoView({ block: "nearest" });
+    }
+
+    function pickSlash(i) {
+      if (!slash || !slash.items[i]) return;
+      const it = slash.items[i];
+      const caret = slash.start;
+      // remove o token "/busca" do texto (como o pickMention)
+      const v = inEl.value;
+      const semToken = v.slice(0, slash.start) + v.slice(slash.end);
+      inEl.value = semToken;
+      closeSlash();
+      autoresize();
+      if (it.tipo === "prompt") {
+        setPromptAtivo(it.p);
+        // devolve o foco ao campo, no lugar onde o token estava
+        inEl.focus();
+        inEl.setSelectionRange(caret, caret);
+      } else if (it.tipo === "salvar") {
+        // o modal fica com o foco (o inEl volta a recebê-lo ao fechar)
+        abrirPlib({ form: true, texto: semToken.trim() });
+      } else {
+        abrirPlib(promptsLib.length ? {} : { form: true });
+      }
+    }
+
+    // Chip do prompt ativo na .promptbar (fundida à caixa de entrada).
+    // p = null desliga. A prévia do texto aparece num tooltip CSS no hover.
+    function setPromptAtivo(p) {
+      promptAtivo = p || null;
+      promptbar.innerHTML = "";
+      promptbar.hidden = !promptAtivo;
+      inrowEl.classList.toggle("com-prompt", !!promptAtivo);
+      if (!promptAtivo) return;
+      const texto = String(promptAtivo.texto || "");
+      const tip = texto.length > 400 ? texto.slice(0, 400) + "…" : texto;
+      const chip = document.createElement("span");
+      chip.className = "pchip";
+      chip.innerHTML =
+        '<span class="pchip-i" aria-hidden="true">✦</span>' +
+        '<span class="pchip-t" title="' + escapeHtml(promptAtivo.titulo) + '">' +
+        escapeHtml(promptAtivo.titulo) + "</span>" +
+        '<button class="chip-x pchip-x" title="Remover o prompt da mensagem" aria-label="Remover o prompt ' +
+        escapeHtml(promptAtivo.titulo) + ' da mensagem">' + SVG.x + "</button>" +
+        '<span class="pchip-tip" aria-hidden="true">' + escapeHtml(tip) + "</span>";
+      chip.querySelector(".pchip-x").addEventListener("click", () => setPromptAtivo(null));
+      promptbar.appendChild(chip);
+      const hint = document.createElement("span");
+      hint.className = "promptbar-hint";
+      hint.textContent = "enviado no início da mensagem";
+      promptbar.appendChild(hint);
+    }
+
+    // ----- Gerenciador de prompts (modal .plib) -----
+    function abrirPlib(opts) {
+      opts = opts || {};
+      plibEl.hidden = false;
+      plibDelArm = null;
+      if (opts.form) abrirPlibForm(null, opts.texto || "");
+      else fecharPlibForm();
+      renderPlibList();
+      if (!opts.form) plibCard.focus();
+    }
+
+    function fecharPlib() {
+      plibEl.hidden = true;
+      fecharPlibForm();
+      inEl.focus();
+    }
+
+    function abrirPlibForm(p, textoInicial) {
+      plibEditId = p ? p.id : null;
+      plibFT.value = p ? p.titulo : "";
+      plibFX.value = p ? p.texto : textoInicial || "";
+      plibErr.textContent = "";
+      plibForm.hidden = false;
+      plibListEl.hidden = true; // o form substitui a lista (card compacto)
+      atualizarPlibCnt();
+      plibFT.focus();
+    }
+
+    function fecharPlibForm() {
+      plibEditId = null;
+      plibForm.hidden = true;
+      plibListEl.hidden = false;
+      plibErr.textContent = "";
+    }
+
+    function promptDoForm() {
+      const agora = Date.now();
+      const antigo = plibEditId && promptsLib.find((x) => x.id === plibEditId);
+      return {
+        id: plibEditId || PLIB.novoId(),
+        titulo: plibFT.value.trim(),
+        texto: plibFX.value.trim(),
+        criadoEm: antigo ? antigo.criadoEm : agora,
+        atualizadoEm: agora,
+      };
+    }
+
+    function atualizarPlibCnt() {
+      if (!temPlib) return;
+      const b = PLIB.bytesDe(promptDoForm());
+      const pct = Math.min(999, Math.round((b / PLIB.TETO_BYTES) * 100));
+      plibCnt.textContent =
+        plibFX.value.length + " caracteres — " + pct + "% do limite de sincronização";
+      plibCnt.classList.toggle("estouro", b > PLIB.TETO_BYTES);
+    }
+    plibFT.addEventListener("input", atualizarPlibCnt);
+    plibFX.addEventListener("input", atualizarPlibCnt);
+
+    function renderPlibList() {
+      plibDelArm = null; // re-render desarma qualquer exclusão pendente
+      plibListEl.innerHTML = "";
+      if (!promptsLib.length) {
+        plibListEl.innerHTML =
+          '<div class="plib-empty">Nenhum prompt salvo ainda.<br>Clique em <b>✚ Novo</b> para criar o primeiro — depois é só digitar <b>/</b> no campo de mensagem para usá-lo.</div>';
+        return;
+      }
+      for (const p of promptsLib) {
+        const row = document.createElement("div");
+        row.className = "plib-row";
+        row.dataset.id = p.id;
+        row.innerHTML =
+          '<div class="plib-info"><span class="plib-t" title="' + escapeHtml(p.titulo) + '">' +
+          escapeHtml(p.titulo) +
+          '</span><span class="plib-prev">' + escapeHtml(previaDe(p.texto)) + "</span></div>" +
+          '<div class="plib-acts">' +
+          '<button class="plib-use" title="Inserir este prompt na mensagem">usar</button>' +
+          '<button class="plib-edit" title="Editar este prompt">editar</button>' +
+          '<button class="plib-del" title="Excluir este prompt">excluir</button></div>';
+        plibListEl.appendChild(row);
+      }
+    }
+
+    // ações DELEGADAS na lista (as rows são recriadas a cada render)
+    plibListEl.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      const row = e.target.closest(".plib-row");
+      if (!btn || !row) return;
+      const p = promptsLib.find((x) => x.id === row.dataset.id);
+      if (!p) return;
+      if (btn.classList.contains("plib-use")) {
+        fecharPlib();
+        setPromptAtivo(p);
+      } else if (btn.classList.contains("plib-edit")) {
+        abrirPlibForm(p);
+      } else if (btn.classList.contains("plib-del")) {
+        // exclusão em DOIS cliques (nunca confirm() nativo — o dialog da
+        // página fica fora do Shadow DOM e congela a extensão)
+        if (plibDelArm === p.id) {
+          plibDelArm = null;
+          PLIB.excluir(p.id, () => {
+            // atualização otimista; o storage.onChanged confirma em seguida
+            promptsLib = promptsLib.filter((x) => x.id !== p.id);
+            renderPlibList();
+          });
+        } else {
+          plibDelArm = p.id;
+          btn.textContent = "excluir?";
+          btn.classList.add("arm");
+        }
+      }
+    });
+
+    function salvarPlibForm() {
+      const p = promptDoForm();
+      if (!p.titulo) {
+        plibErr.textContent = "Dê um título ao prompt.";
+        plibFT.focus();
+        return;
+      }
+      if (!p.texto) {
+        plibErr.textContent = "Escreva o texto do prompt.";
+        plibFX.focus();
+        return;
+      }
+      PLIB.salvar(p, (erro) => {
+        if (erro) {
+          plibErr.textContent = "Não foi possível salvar: " + erro;
+          return;
+        }
+        // atualização otimista (o storage.onChanged confirma em seguida)
+        promptsLib = promptsLib
+          .filter((x) => x.id !== p.id)
+          .concat(p)
+          .sort((a, b) => String(a.titulo).localeCompare(String(b.titulo), "pt-BR"));
+        fecharPlibForm();
+        renderPlibList();
+      });
+    }
+    plibCard.querySelector(".plib-save").addEventListener("click", salvarPlibForm);
+    plibCard.querySelector(".plib-cancel").addEventListener("click", fecharPlibForm);
+    // "✚ Novo" aproveita o que já está escrito no campo como ponto de
+    // partida (o caso real: a pessoa redigiu a instrução e só então
+    // percebeu que quer guardá-la) — o campo de mensagem não é alterado
+    plibCard
+      .querySelector(".plib-new")
+      .addEventListener("click", () => abrirPlibForm(null, inEl.value.trim()));
+    plibCard.querySelector(".plib-close").addEventListener("click", fecharPlib);
+    // clique no fundo escuro fecha (padrão de modal)
+    plibEl.addEventListener("click", (e) => {
+      if (e.target === plibEl) fecharPlib();
+    });
+    // Esc dentro do modal: fecha o form (se aberto) ou o modal — e NÃO vaza
+    // para o Esc do painel (que cancelaria o modo docx junto)
+    plibCard.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!plibForm.hidden) fecharPlibForm();
+      else fecharPlib();
+    });
+    btnPlib.addEventListener("click", () =>
+      abrirPlib(promptsLib.length ? {} : { form: true })
+    );
+
     inEl.addEventListener("input", () => {
       autoresize();
       updateMention();
+      updateSlash();
     });
     // o caret pode mudar sem input (clique, setas, Home/End) — reavalia o token
-    inEl.addEventListener("click", updateMention);
-    inEl.addEventListener("keyup", (e) => {
-      if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) updateMention();
+    inEl.addEventListener("click", () => {
+      updateMention();
+      updateSlash();
     });
-    inEl.addEventListener("blur", () => setTimeout(closeMention, 120));
+    inEl.addEventListener("keyup", (e) => {
+      if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) {
+        updateMention();
+        updateSlash();
+      }
+    });
+    inEl.addEventListener("blur", () =>
+      setTimeout(() => {
+        closeMention();
+        closeSlash();
+      }, 120)
+    );
 
     let sendCb = null;
     let configureCb = null;
     function doSend() {
-      const t = inEl.value;
+      // prompt salvo ativo (chip) PRECEDE o texto digitado — a combinação
+      // acontece aqui, no painel: o content script recebe o texto final e o
+      // protocolo/histórico não mudam em nada
+      const t = montarTextoEnvio(promptAtivo && promptAtivo.texto, inEl.value);
       // No modo documento, Enviar/Enter geram o .docx (instrução vazia cai na
       // padrão, tratada pelo content script) — nunca viram mensagem de chat.
       if (docxMode) {
@@ -1437,18 +1892,51 @@ var PjePanel = (function () {
         gerarDocCb(t, sel);
         inEl.value = "";
         inEl.style.height = "auto";
+        setPromptAtivo(null); // consumido no envio
         closeMention();
+        closeSlash();
         return;
       }
       if (!sendCb) return;
-      if (!t.trim()) return;
+      if (!t.trim()) return; // com chip ativo t nunca é vazio: chip sozinho envia
       sendCb(t, getSelected());
       inEl.value = "";
       inEl.style.height = "auto";
+      setPromptAtivo(null); // consumido no envio
       closeMention();
+      closeSlash();
     }
     sendBtn.addEventListener("click", doSend);
     inEl.addEventListener("keydown", (e) => {
+      if (slash && !slashEl.hidden) {
+        const n = slash.items.length;
+        // sem prompt casando com a busca (query não-vazia), só o Esc é
+        // capturado — Enter envia a mensagem que começa com "/" literal
+        // (as ações fixas continuam clicáveis pelo mouse)
+        const navegavel = slash.total > 0 || !slash.query.trim();
+        if (navegavel && e.key === "ArrowDown") {
+          e.preventDefault();
+          slash.idx = (slash.idx + 1) % n;
+          renderSlash();
+          return;
+        }
+        if (navegavel && e.key === "ArrowUp") {
+          e.preventDefault();
+          slash.idx = (slash.idx - 1 + n) % n;
+          renderSlash();
+          return;
+        }
+        if (navegavel && (e.key === "Enter" || e.key === "Tab")) {
+          e.preventDefault();
+          pickSlash(slash.idx);
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeSlash();
+          return;
+        }
+      }
       if (mention && !mentionEl.hidden) {
         const n = mention.items.length;
         // com a lista VAZIA (busca sem resultado) só o Esc é capturado —
@@ -1627,6 +2115,7 @@ var PjePanel = (function () {
         prepEl = null;
         transcript.length = 0;
         setDocxMode(false); // nova conversa desliga o modo documento
+        setPromptAtivo(null); // e solta o chip de prompt salvo
         statusEl.textContent = "";
         alertEl.hidden = true;
         alertEl.innerHTML = "";
@@ -1843,6 +2332,9 @@ var PjePanel = (function () {
         // quando o modelo atual não o suporta (Gemini).
         tglSearch.disabled = b;
         btnDocx.disabled = b || !docxDisponivel;
+        btnPlib.disabled = b;
+        const px = promptbar.querySelector(".pchip-x");
+        if (px) px.disabled = b;
       },
       // Disponibilidade do "📄 Gerar .docx" pelo modelo atual: a geração usa
       // a execução de código + skill docx da API da Anthropic — nos modelos
@@ -1891,5 +2383,10 @@ var PjePanel = (function () {
     };
   }
 
-  return { mount, _renderMd: renderMd };
+  return {
+    mount,
+    _renderMd: renderMd,
+    _findSlashToken: findSlashToken,
+    _montarTextoEnvio: montarTextoEnvio,
+  };
 })();
