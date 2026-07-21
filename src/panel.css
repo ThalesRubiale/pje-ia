@@ -600,6 +600,8 @@
 }
 .send:disabled, .in:disabled { opacity: 0.5; cursor: default; }
 .hint-key { font-size: 11px; color: var(--muted); margin-top: 6px; }
+/* Nota do modo de citações (modelos Gemini: páginas citadas no próprio texto) */
+.cite-note { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
 /* ---------- Scrollbars temáticas (Chrome) ---------- */
 .doclist::-webkit-scrollbar,
@@ -696,6 +698,19 @@
   background: #e9f2f8; border-color: var(--pje); color: var(--text);
   font-weight: 600; box-shadow: inset 0 0 0 1px rgba(0, 120, 170, 0.35);
 }
+/* indisponível no modelo atual (Gemini): apagado, com o motivo no tooltip */
+.btn-docx.off, .btn-docx.off:hover {
+  opacity: 0.45; cursor: not-allowed; border-color: var(--line); color: var(--muted);
+}
+/* Selo do modelo ativo (fica à direita na barra de ferramentas) */
+.modelo-badge {
+  margin-left: auto;
+  border: 1px dashed var(--line); background: transparent; color: var(--muted);
+  border-radius: 999px; padding: 3px 10px; font-size: 11px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
+  transition: all 0.15s;
+}
+.modelo-badge:hover { border-color: var(--pje); color: var(--text); border-style: solid; }
 
 /* ---------- Modo documento (.docx) ----------
    Faixa entre as ferramentas e o campo: explica que Enviar virou "Gerar". */

@@ -314,6 +314,7 @@ var PjePanel = (function () {
                 <div class="tools">
                   <button class="tgl-search" aria-pressed="false" title="Liga/desliga a busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…). Com a busca ligada, escreva a pergunta e use o botão Enviar normalmente.">🔍 Jurisprudência</button>
                   <button class="btn-docx" title="Liga o modo documento: a instrução aparece no campo (edite à vontade) e o botão Enviar vira “Gerar” — clique nele (ou Enter) para gerar o Word (.docx) com base nas peças marcadas.">📄 Gerar .docx</button>
+                  <button class="modelo-badge" hidden title="Modelo de IA em uso nesta conversa — clique para trocar nas opções da extensão"></button>
                 </div>
               </div>
               <div class="docxbar" hidden>
@@ -325,6 +326,7 @@ var PjePanel = (function () {
                 <button class="send">Enviar</button>
               </div>
               <div class="hint-key"><b>@</b> cita peças &nbsp;·&nbsp; <b>Enter</b> envia &nbsp;·&nbsp; <b>Shift+Enter</b> quebra linha &nbsp;·&nbsp; <b>📄 .docx</b>: clique no botão, revise a instrução e clique em <b>Gerar</b></div>
+              <div class="cite-note" hidden>ℹ️ Modelos Gemini: as citações de página aparecem no próprio texto da resposta (ex.: “conforme a Contestação, fl. 12”), sem os marcadores [n] automáticos dos modelos Claude.</div>
             </div>
           </div>
         </div>
@@ -353,6 +355,8 @@ var PjePanel = (function () {
     const gaugeTxt = $(".gauge-txt");
     const custoEl = $(".custo");
     const custoTxt = $(".custo-txt");
+    const citeNote = $(".cite-note");
+    const modeloBadge = $(".modelo-badge");
     const alertEl = $(".alertbar");
     const ctxbar = $(".ctxbar");
     const mentionEl = $(".mention");
@@ -379,9 +383,13 @@ var PjePanel = (function () {
         "<p><b>Contexto limitado:</b> a conversa inteira (peças + perguntas + respostas) " +
         "precisa caber na janela do modelo — até <b>200 mil tokens</b> no modelo padrão " +
         "(Haiku 4.5, rápido e barato). Para autos volumosos, escolha um modelo com janela " +
-        "de <b>1 milhão de tokens</b> (ex.: Sonnet 5) na configuração da extensão. " +
+        "de <b>1 milhão de tokens</b> (Sonnet 5 ou os modelos Gemini do Google) na " +
+        "configuração da extensão. " +
         "O medidor acima do campo mostra o quanto já foi usado; se não couber, " +
         "analise por partes, desmarcando peças para liberar espaço.</p>" +
+        "<p><b>Dica de uso:</b> comece marcando só as peças relevantes; <b>adicionar</b> " +
+        "peças no meio da conversa é barato (entram uma única vez, aproveitando o cache). " +
+        "Para <b>remover</b> várias peças ou mudar de assunto, prefira ⟲ Nova conversa.</p>" +
         '<p>💡 Para autos muito grandes, conheça o <a href="https://mcp.tecjustica.com/" ' +
         'target="_blank" rel="noopener">TecJustiça MCP</a> — servidor MCP em que o contexto ' +
         "do processo é gerenciado automaticamente pelo código — e a demonstração com o PJe " +
@@ -488,8 +496,12 @@ var PjePanel = (function () {
       "situação atual do feito.";
     const btnDocx = $(".btn-docx");
     const docxbar = $(".docxbar");
+    const TITLE_DOCX_PADRAO = btnDocx.title; // restaurado quando o docx volta
     let gerarDocCb = null;
     let docxMode = false;
+    // false quando o modelo atual não gera .docx (Gemini): o botão fica
+    // desabilitado com tooltip explicativo, e lockInput(false) não o reativa.
+    let docxDisponivel = true;
     function setDocxMode(on) {
       docxMode = on;
       docxbar.hidden = !on;
@@ -520,6 +532,10 @@ var PjePanel = (function () {
     docxbar
       .querySelector(".docxbar-x")
       .addEventListener("click", () => setDocxMode(false));
+
+    // Selo do modelo ativo: clique abre a configuração da extensão (o
+    // callback é o mesmo do CTA "configure sua chave").
+    $(".modelo-badge").addEventListener("click", () => configureCb && configureCb());
 
     // -------------------------------------------------------------------------
     // Transcript da conversa (para exportar .md e copiar por mensagem).
@@ -1238,7 +1254,7 @@ var PjePanel = (function () {
         needkeyEl = document.createElement("div");
         needkeyEl.className = "needkey";
         needkeyEl.innerHTML =
-          '<div class="k">Configure sua chave</div><p>Para usar o assistente, informe sua chave da API da Anthropic (uma única vez).</p><button>Abrir configuração</button>';
+          '<div class="k">Configure sua chave</div><p>Para usar o assistente, informe sua chave de API — da Anthropic (modelos Claude) ou do Google (modelos Gemini), conforme o modelo escolhido.</p><button>Abrir configuração</button>';
         needkeyEl
           .querySelector("button")
           .addEventListener("click", () => configureCb && configureCb());
@@ -1466,15 +1482,16 @@ var PjePanel = (function () {
         custoTxt.textContent =
           "Custo estimado: ~" + fmtUsd(info.turnoUsd) + " nesta resposta • ~" +
           fmtUsd(info.conversaUsd) + " na conversa";
+        const prov = info.provedorNome || "Anthropic";
         const u = info.usage;
         custoEl.title = u
-          ? "Estimativa pela tabela de preços da Anthropic (não inclui impostos). " +
+          ? "Estimativa pela tabela de preços da " + prov + " (não inclui impostos). " +
             "Última resposta: " +
             fmtMil(u.input_tokens) + " tokens de entrada, " +
             fmtMil((u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0)) +
             " de cache (bem mais baratos) e " +
             fmtMil(u.output_tokens) + " gerados."
-          : "Estimativa pela tabela de preços da Anthropic.";
+          : "Estimativa pela tabela de preços da " + prov + ".";
         custoEl.hidden = false;
       },
       // Barra de ALERTA persistente (contexto cheio): diferente do status
@@ -1499,9 +1516,54 @@ var PjePanel = (function () {
         inEl.disabled = b;
         sendBtn.disabled = b;
         // trava também as ações — clicar durante uma resposta não faz nada,
-        // e botão ativo-porém-morto confunde
+        // e botão ativo-porém-morto confunde. O docx permanece desabilitado
+        // quando o modelo atual não o suporta (Gemini).
         tglSearch.disabled = b;
-        btnDocx.disabled = b;
+        btnDocx.disabled = b || !docxDisponivel;
+      },
+      // Disponibilidade do "📄 Gerar .docx" pelo modelo atual: a geração usa
+      // a execução de código + skill docx da API da Anthropic — nos modelos
+      // Gemini o botão fica desabilitado com o motivo no tooltip.
+      setDocxDisponivel(ok) {
+        docxDisponivel = !!ok;
+        if (!docxDisponivel && docxMode) setDocxMode(false);
+        btnDocx.disabled = !docxDisponivel || inEl.disabled;
+        btnDocx.classList.toggle("off", !docxDisponivel);
+        btnDocx.title = docxDisponivel
+          ? TITLE_DOCX_PADRAO
+          : "A geração de .docx usa a execução de código da API da Anthropic — indisponível nos modelos Gemini. Troque para um modelo Claude nas opções da extensão.";
+      },
+      // Nota discreta sobre o modo de citações do modelo atual: "textual"
+      // (Gemini — páginas citadas no próprio texto) mostra a nota; "nativa"
+      // (Claude — marcadores [n] automáticos) esconde.
+      setModoCitacoes(modo) {
+        citeNote.hidden = modo !== "textual";
+      },
+      // Selo do modelo ATIVO na barra de ferramentas ("Gemini 3.6 Flash ·
+      // raciocínio alto") — o usuário vê na hora que a troca nas opções
+      // valeu, sem precisar confiar às cegas. info: {model, effort, comEffort}.
+      setModelo(info) {
+        if (!info || !info.model) {
+          modeloBadge.hidden = true;
+          return;
+        }
+        const NOMES = {
+          "claude-haiku-4-5": "Claude Haiku 4.5",
+          "claude-sonnet-5": "Claude Sonnet 5",
+          "claude-opus-4-8": "Claude Opus 4.8",
+          "claude-fable-5": "Claude Fable 5",
+          "gemini-3.6-flash": "Gemini 3.6 Flash",
+          "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite",
+        };
+        const EFFORTS = { high: "alto", medium: "médio", low: "baixo" };
+        let txt = "🧠 " + (NOMES[info.model] || info.model);
+        // modelos sem suporte a effort (Haiku) não mostram o nível — exibir
+        // um valor que a API não recebe seria mentira
+        if (info.comEffort && EFFORTS[info.effort]) {
+          txt += " · raciocínio " + EFFORTS[info.effort];
+        }
+        modeloBadge.textContent = txt;
+        modeloBadge.hidden = false;
       },
     };
   }

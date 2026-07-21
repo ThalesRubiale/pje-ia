@@ -6,14 +6,16 @@
   <a href="LICENSE"><img alt="Licença MIT" src="https://img.shields.io/badge/licen%C3%A7a-MIT-0078aa?style=flat-square"></a>
   <img alt="Chrome Manifest V3" src="https://img.shields.io/badge/Chrome-Manifest%20V3-005f88?style=flat-square&logo=googlechrome&logoColor=white">
   <img alt="Claude API" src="https://img.shields.io/badge/IA-Claude%20(Anthropic)-0078aa?style=flat-square">
+  <img alt="Gemini API" src="https://img.shields.io/badge/IA-Gemini%20(Google)-005f88?style=flat-square">
   <img alt="PJe 1º grau" src="https://img.shields.io/badge/PJe-1%C2%BA%20grau-005f88?style=flat-square">
 </p>
 
 **PJe IA** é uma extensão Chrome que adiciona um assistente de IA à tela de autos digitais
 do **PJe (Processo Judicial Eletrônico)**. Você marca as peças do processo, pergunta em
-linguagem natural e o **Claude** responde com base no conteúdo real dos documentos —
-resumos, linhas do tempo, partes, pedidos, provas — direto na página do processo, com a
-interface na paleta visual do próprio PJe.
+linguagem natural e o modelo — **Claude (Anthropic)** ou **Gemini (Google)**, à sua
+escolha — responde com base no conteúdo real dos documentos — resumos, linhas do tempo,
+partes, pedidos, provas — direto na página do processo, com a interface na paleta visual
+do próprio PJe.
 
 <p align="center">
   <img src="docs/painel-expandido.jpg" alt="Painel expandido: peças categorizadas por cor, chips de contexto e resposta em tabela" width="720">
@@ -47,7 +49,8 @@ investigação aberta, um agente com MCP é o caminho — o próprio painel suge
 
 ## ✨ Recursos
 
-- **Chat sobre os autos** — converse com o Claude sobre as peças selecionadas, com histórico multi-turno.
+- **Chat sobre os autos** — converse com o modelo sobre as peças selecionadas, com histórico multi-turno.
+- **Dois provedores de IA** — modelos Claude (Anthropic) e Gemini (Google) na mesma extensão: cadastre a chave do provedor que preferir (ou as duas) e troque de modelo nas opções. Nos modelos Gemini, as citações de página vêm no próprio texto e a geração de .docx fica indisponível (recursos exclusivos da API da Anthropic).
 - **Seleção de peças** — checkboxes por documento; só o que você marcar é enviado.
 - **Busca na lista de peças** — filtro instantâneo por título, ignorando acentos; "todas" marca/desmarca só as peças visíveis no filtro.
 - **PDF × HTML detectados automaticamente** — peças HTML têm o texto extraído localmente e vão como texto puro (fração do custo de um PDF); a detecção confere o content-type **e** a assinatura `%PDF-` do binário, então PDF mal-rotulado pelo servidor não vira lixo no contexto.
@@ -83,9 +86,11 @@ investigação aberta, um agente com MCP é o caminho — o próprio painel suge
    - O Chrome carrega a extensão dessa pasta — não a apague depois.
 2. Abra `chrome://extensions` e ative o **Modo do desenvolvedor** (canto superior direito).
 3. Clique em **Carregar sem compactação** e selecione a pasta extraída (a que contém o `manifest.json`).
-4. Clique no ícone **PJe IA** na barra do Chrome, cole sua chave da API da Anthropic e salve.
-   - Não tem chave? O popup traz um **guia passo a passo** para criar a chave e adicionar crédito
-     no [console.anthropic.com](https://console.anthropic.com).
+4. Clique no ícone **PJe IA** na barra do Chrome, cole sua chave de API — da **Anthropic**
+   (modelos Claude) e/ou do **Google** (modelos Gemini) — escolha o modelo e salve.
+   - Não tem chave? O popup traz um **guia passo a passo** para criar a chave: Anthropic no
+     [console.anthropic.com](https://console.anthropic.com), Google no
+     [aistudio.google.com](https://aistudio.google.com/apikey).
 
 **Para atualizar:** baixe o novo `.zip`, extraia por cima da mesma pasta e clique em **↺ Atualizar** em `chrome://extensions`. (Quem preferir pode continuar usando `git clone` + carregar a pasta do repositório.)
 
@@ -128,8 +133,10 @@ flowchart LR
     end
     A -- Port --> D[background.js<br>service worker]
     D --> E[claude.js<br>streaming SSE]
+    D --> H[gemini.js<br>streaming SSE]
     E -- x-api-key --> F[(API Anthropic<br>Claude)]
-    G[(chrome.storage.local<br>chave + modelo)] --> D
+    H -- x-goog-api-key --> I[(API Google<br>Gemini)]
+    G[(chrome.storage.local<br>chaves + modelo)] --> D
 ```
 
 | Módulo | Papel |
@@ -137,13 +144,13 @@ flowchart LR
 | `src/pje.js` | Lista as peças na timeline e baixa cada uma pelo endpoint REST do PJe (sessão do usuário). Ativa peças "não abertas" automaticamente. |
 | `src/panel.js` / `panel.css` | UI do chat em Shadow DOM (isolada do CSS do PJe): seletor de peças, menção `@`, chips de contexto, card de progresso e renderizador markdown próprio e seguro. |
 | `src/content.js` | Orquestra: downloads paralelos, cache por peça, prompt caching, conversa multi-turno. |
-| `src/background.js` + `claude.js` | Service worker que guarda a chave e chama a API da Anthropic com streaming. **A chave nunca é exposta à página.** |
+| `src/background.js` + `claude.js` / `gemini.js` | Service worker que guarda as chaves e chama a API do provedor do modelo escolhido (Anthropic ou Google) com streaming. **As chaves nunca são expostas à página.** |
 | `src/popup.html` | Configuração em 1 clique no ícone da barra (chave, modelo, guia de primeiros passos). |
 
 ## 🔒 Privacidade e segurança
 
-- A chave da API fica **somente** no `chrome.storage.local` do seu navegador (não sincroniza, não passa por servidores de terceiros).
-- Os documentos marcados são enviados **diretamente à API da Anthropic** — nenhum outro serviço intermedia.
+- As chaves de API ficam **somente** no `chrome.storage.local` do seu navegador (não sincronizam, não passam por servidores de terceiros).
+- Os documentos marcados são enviados **diretamente à API do provedor do modelo escolhido** (Anthropic ou Google) — nenhum outro serviço intermedia.
 - A extensão só roda em sites da Justiça (`*.jus.br`), só injeta o painel em telas de autos do PJe e não coleta telemetria.
 
 > ⚠️ **Aviso legal:** autos judiciais podem conter dados pessoais e sigilosos. O uso da
@@ -171,4 +178,4 @@ erro do painel (F12 → Console também ajuda).
 
 ---
 
-<p align="center"><sub>Feito com ⚖️ para quem lê autos o dia inteiro. Não afiliado ao CNJ nem à Anthropic.</sub></p>
+<p align="center"><sub>Feito com ⚖️ para quem lê autos o dia inteiro. Não afiliado ao CNJ, à Anthropic nem ao Google.</sub></p>

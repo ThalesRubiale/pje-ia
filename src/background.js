@@ -1,8 +1,11 @@
 // Service worker: recebe pedidos do painel, lê a chave/modelo do storage
-// (a página nunca vê a chave) e faz streaming da resposta do Claude.
+// (a página nunca vê a chave) e faz streaming da resposta do modelo.
 // Também resolve sozinho as continuações de turno (stop_reason "pause_turn",
 // quando o loop de ferramentas do servidor atinge o teto de iterações) — o
 // content script enxerga um único turno lógico.
+// Dois provedores: Anthropic (claude.js) e Google Gemini (gemini.js). O
+// provedor é inferido do id do modelo (prefixo "gemini-") e os dois clientes
+// emitem o MESMO vocabulário de eventos — o resto deste arquivo não distingue.
 import {
   streamClaude,
   uploadFile,
@@ -11,6 +14,11 @@ import {
   countTokens,
   MAX_TOKENS_CHAT,
 } from "./claude.js";
+import {
+  streamGemini,
+  uploadFileGemini,
+  countTokensGemini,
+} from "./gemini.js";
 
 // Capacidades por modelo. Governam limites de páginas/contexto, as versões das
 // ferramentas web, a configuração de thinking/effort aceita por cada um e o
@@ -19,6 +27,7 @@ import {
 // gravação ≈ 1,25× o preço de input (TTL 5 min); leitura ≈ 0,1×.
 const MODEL_CAPS = {
   "claude-sonnet-5": {
+    provider: "anthropic",
     contextTokens: 1000000,
     maxPages: 600,
     webSearch: "web_search_20260209",
@@ -28,6 +37,7 @@ const MODEL_CAPS = {
     preco: { in: 3, out: 15 },
   },
   "claude-opus-4-8": {
+    provider: "anthropic",
     contextTokens: 1000000,
     maxPages: 600,
     webSearch: "web_search_20260209",
@@ -37,6 +47,7 @@ const MODEL_CAPS = {
     preco: { in: 5, out: 25 },
   },
   "claude-fable-5": {
+    provider: "anthropic",
     contextTokens: 1000000,
     maxPages: 600,
     // fable não está na lista das variantes _20260209 — usa as básicas
@@ -47,6 +58,7 @@ const MODEL_CAPS = {
     preco: { in: 10, out: 50 },
   },
   "claude-haiku-4-5": {
+    provider: "anthropic",
     contextTokens: 200000,
     maxPages: 100,
     webSearch: "web_search_20250305",
@@ -55,16 +67,61 @@ const MODEL_CAPS = {
     effort: false, // effort retorna erro no Haiku 4.5
     preco: { in: 1, out: 5 },
   },
+  // Modelos Google Gemini (Interactions API). docx:false → o botão "Gerar
+  // .docx" fica desabilitado (o code execution do Gemini não devolve
+  // arquivos); citacoesNativas:false → o system prompt pede citações
+  // TEXTUAIS ("conforme a Contestação, fl. 12") e a UI mostra a nota.
+  // tokensPagina: 258 (documentação oficial) — a estimativa local usa este
+  // valor no lugar dos 2000/pág. da Anthropic. preco.cacheRead: tabela
+  // oficial (implicit caching; não há cobrança de gravação).
+  "gemini-3.6-flash": {
+    provider: "gemini",
+    contextTokens: 1000000,
+    maxPages: 1000,
+    googleSearch: true,
+    docx: false,
+    citacoesNativas: false,
+    thinking: null,
+    effort: true, // vira generation_config.thinking_level
+    tokensPagina: 258,
+    preco: { in: 1.5, out: 7.5, cacheRead: 0.15 },
+  },
+  "gemini-3.5-flash-lite": {
+    provider: "gemini",
+    contextTokens: 1000000,
+    maxPages: 1000,
+    googleSearch: true,
+    docx: false,
+    citacoesNativas: false,
+    thinking: null,
+    effort: true,
+    tokensPagina: 258,
+    preco: { in: 0.3, out: 2.5, cacheRead: 0.03 },
+  },
 };
+
+// Provedor do modelo (prefixo do id — a lista de modelos vive nos <option>
+// do popup/options; ids desconhecidos caem no default Anthropic via capsDe).
+function providerDe(model) {
+  return model && model.startsWith("gemini-") ? "gemini" : "anthropic";
+}
+
+// effort salvo (high/medium/low) → thinking_level do Gemini. A escala do
+// Gemini tem os mesmos três nomes (há também "minimal", que não usamos: o
+// "low" já é a opção econômica equivalente ao effort baixo da Anthropic).
+const EFFORT_PARA_THINKING_LEVEL = { high: "high", medium: "medium", low: "low" };
 
 // Custo estimado (US$) de um usage acumulado, pela tabela de preços do modelo.
 // A API não devolve valor monetário — só as contagens de tokens por categoria.
 function custoUsdDe(usage, preco) {
   if (!usage || !preco) return null;
+  // cache read: preço próprio quando a tabela do modelo define (Gemini);
+  // senão a regra da Anthropic (0,1× o input) — resultado idêntico ao atual.
+  const cacheRead = preco.cacheRead != null ? preco.cacheRead : preco.in * 0.1;
   return (
     ((usage.input_tokens || 0) * preco.in +
       (usage.cache_creation_input_tokens || 0) * preco.in * 1.25 +
-      (usage.cache_read_input_tokens || 0) * preco.in * 0.1 +
+      (usage.cache_read_input_tokens || 0) * cacheRead +
       (usage.output_tokens || 0) * preco.out) /
     1e6
   );
@@ -80,14 +137,31 @@ function capsDe(model) {
 // (1M) no popup/opções; o MODEL_CAPS e o medidor cuidam dos limites.
 function getCfg() {
   return new Promise((resolve) =>
-    chrome.storage.local.get(["apiKey", "model", "effort"], (v) =>
+    chrome.storage.local.get(["apiKey", "geminiApiKey", "model", "effort"], (v) =>
       resolve({
         apiKey: v.apiKey,
+        geminiApiKey: v.geminiApiKey,
         model: v.model || "claude-haiku-4-5",
         effort: v.effort || "high",
       })
     )
   );
+}
+
+// Chave do provedor do modelo atual, com erro claro quando falta.
+function chaveDe(cfg, provider) {
+  if (provider === "gemini") {
+    if (!cfg.geminiApiKey) {
+      throw new Error(
+        "configure sua chave da API do Google Gemini nas opções da extensão (o modelo escolhido é Gemini)"
+      );
+    }
+    return cfg.geminiApiKey;
+  }
+  if (!cfg.apiKey) {
+    throw new Error("configure sua ANTHROPIC_API_KEY nas opções da extensão");
+  }
+  return cfg.apiKey;
 }
 
 // Cache (sessão do navegador) de uploads na Files API: peça já enviada não
@@ -112,19 +186,44 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 
   if (msg.type === "caps") {
-    getCfg().then(({ model }) => sendResponse({ model, caps: capsDe(model) }));
+    // model + effort vão junto: o painel mostra o que está ATIVO (o usuário
+    // não deveria precisar confiar às cegas no que salvou nas opções)
+    getCfg().then(({ model, effort }) =>
+      sendResponse({ model, effort, caps: capsDe(model) })
+    );
     return true; // resposta assíncrona
   }
 
   if (msg.type === "upload") {
     (async () => {
       try {
-        const { apiKey } = await getCfg();
-        if (!apiKey) throw new Error("configure sua ANTHROPIC_API_KEY nas opções da extensão");
+        const cfg = await getCfg();
+        const provider = providerDe(cfg.model);
+        const apiKey = chaveDe(cfg, provider);
+        if (provider === "gemini") {
+          // namespace próprio ("gfile:") e VALIDAÇÃO de expiração na leitura:
+          // a File API do Google apaga os arquivos após 48 h — um URI vencido
+          // no cache derrubaria o request com erro críptico.
+          const key = msg.payload.cacheKey ? "gfile:" + msg.payload.cacheKey : null;
+          if (key) {
+            const cached = await sessGet(key);
+            if (cached && cached.uri && cached.exp > Date.now()) {
+              return sendResponse({ fileId: cached.uri, provider });
+            }
+          }
+          const r = await uploadFileGemini({
+            apiKey,
+            filename: msg.payload.filename,
+            b64: msg.payload.b64,
+            mime: msg.payload.mime,
+          });
+          if (key) await sessSet(key, { uri: r.fileUri, exp: r.expiraEm });
+          return sendResponse({ fileId: r.fileUri, provider });
+        }
         const key = msg.payload.cacheKey ? "file:" + msg.payload.cacheKey : null;
         if (key) {
           const cached = await sessGet(key);
-          if (cached) return sendResponse({ fileId: cached });
+          if (cached) return sendResponse({ fileId: cached, provider });
         }
         const fileId = await uploadFile({
           apiKey,
@@ -133,7 +232,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           mime: msg.payload.mime,
         });
         if (key) await sessSet(key, fileId);
-        sendResponse({ fileId });
+        sendResponse({ fileId, provider });
       } catch (e) {
         sendResponse({ error: String((e && e.message) || e) });
       }
@@ -144,17 +243,26 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "countTokens") {
     (async () => {
       try {
-        const { apiKey, model } = await getCfg();
-        if (!apiKey) throw new Error("configure sua ANTHROPIC_API_KEY nas opções da extensão");
-        const tokens = await countTokens({
-          apiKey,
-          model,
-          system: msg.payload.system,
-          messages: msg.payload.messages,
-          tools: msg.payload.tools,
-          betas: msg.payload.betas,
-        });
-        sendResponse({ tokens, contextTokens: capsDe(model).contextTokens });
+        const cfg = await getCfg();
+        const provider = providerDe(cfg.model);
+        const apiKey = chaveDe(cfg, provider);
+        const tokens =
+          provider === "gemini"
+            ? await countTokensGemini({
+                apiKey,
+                model: cfg.model,
+                system: msg.payload.system,
+                messages: msg.payload.messages,
+              })
+            : await countTokens({
+                apiKey,
+                model: cfg.model,
+                system: msg.payload.system,
+                messages: msg.payload.messages,
+                tools: msg.payload.tools,
+                betas: msg.payload.betas,
+              });
+        sendResponse({ tokens, contextTokens: capsDe(cfg.model).contextTokens });
       } catch (e) {
         sendResponse({ error: String((e && e.message) || e) });
       }
@@ -194,11 +302,15 @@ const espera = (ms) => new Promise((r) => setTimeout(r, ms));
 // pelo Port. Retorna {content, stopReason}; lança erro em falha ou recusa.
 // payload: {system, messages, tools?, container?, betas?, maxTokens?, maxIter?}
 async function executarTurno(port, payload) {
-  const { apiKey, model, effort } = await getCfg();
-  if (!apiKey) {
-    throw new Error("configure sua ANTHROPIC_API_KEY nas opções da extensão");
-  }
+  const cfg = await getCfg();
+  const { model, effort } = cfg;
   const caps = capsDe(model);
+  const provider = caps.provider || "anthropic";
+  const apiKey = chaveDe(cfg, provider);
+  // Os dois clientes emitem o mesmo vocabulário de eventos — daqui em diante
+  // o turno não distingue provedor (o Gemini nunca emite pause_turn, então o
+  // loop de continuações sai naturalmente na primeira iteração).
+  const streamFn = provider === "gemini" ? streamGemini : streamClaude;
 
   const baseReq = {
     apiKey,
@@ -207,9 +319,16 @@ async function executarTurno(port, payload) {
     max_tokens: payload.maxTokens || MAX_TOKENS_CHAT,
   };
   if (payload.tools && payload.tools.length) baseReq.tools = payload.tools;
-  if (payload.betas && payload.betas.length) baseReq.betas = payload.betas;
-  if (caps.thinking) baseReq.thinking = caps.thinking;
-  if (caps.effort) baseReq.output_config = { effort };
+  if (provider === "gemini") {
+    // Gemini: sem betas/thinking/output_config; o effort vira thinking_level.
+    if (caps.effort) {
+      baseReq.thinkingLevel = EFFORT_PARA_THINKING_LEVEL[effort] || "medium";
+    }
+  } else {
+    if (payload.betas && payload.betas.length) baseReq.betas = payload.betas;
+    if (caps.thinking) baseReq.thinking = caps.thinking;
+    if (caps.effort) baseReq.output_config = { effort };
+  }
 
   let messages = payload.messages;
   let container = payload.container || null;
@@ -242,7 +361,7 @@ async function executarTurno(port, payload) {
     let final = null;
     for (let tentativa = 0; ; tentativa++) {
       try {
-        for await (const ev of streamClaude(req)) {
+        for await (const ev of streamFn(req)) {
           if (ev.kind === "text") postar(port, { type: "delta", text: ev.text });
           else if (ev.kind === "thinking")
             postar(port, { type: "thinking", text: ev.text });
@@ -314,6 +433,16 @@ function extrairFileIds(blocks) {
 // arquivos gerados no container e o baixa pela Files API, repassando os bytes
 // ao content script para download no navegador.
 async function gerarDocumento(port, payload) {
+  {
+    // Defesa em profundidade: a UI desabilita o botão nos modelos Gemini
+    // (o code execution do Gemini não devolve arquivos — limitação da API).
+    const { model } = await getCfg();
+    if (providerDe(model) === "gemini") {
+      throw new Error(
+        "a geração de .docx não está disponível nos modelos Gemini — troque para um modelo Claude nas opções da extensão"
+      );
+    }
+  }
   const r = await executarTurno(port, payload);
   const { apiKey } = await getCfg();
   const ids = extrairFileIds(r.content);

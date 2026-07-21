@@ -1,3 +1,6 @@
+# shim local do gerenciador de skills (symlink para .agents/ — não portável)
+.claude/
+
 # SO / editor
 Thumbs.db
 Desktop.ini

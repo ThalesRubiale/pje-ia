@@ -11,15 +11,17 @@
   // nada é injetado no DOM da página. O bootstrap fica no fim do arquivo.
   function iniciar() {
 
-  const SYSTEM_PROMPT = [
+  // Trechos comuns do system prompt; a parte de CITAÇÕES varia por provedor:
+  // a Anthropic gera citações estruturadas por página (citations API); o
+  // Gemini não tem esse recurso — o modelo é instruído a citar a peça e a
+  // página NO PRÓPRIO texto (caps.citacoesNativas === false).
+  const PROMPT_INICIO = [
     "Você é um assistente jurídico que analisa autos de processos do PJe.",
     "Responda sempre em português do Brasil.",
     "Baseie-se SOMENTE nos documentos anexados (peças selecionadas pelo usuário).",
     "Cite a peça de origem pelo nome ao afirmar fatos (ex.: 'na Contestação…').",
-    "As citações precisas de trechos (com página) são geradas automaticamente pelo",
-    "sistema — apoie cada afirmação relevante no trecho correspondente sempre que",
-    "possível. Peças digitalizadas sem camada de texto podem não permitir citação",
-    "automática; nesse caso, apenas indique a peça pelo nome e avise o usuário.",
+  ];
+  const PROMPT_FIM = [
     "Seja objetivo e técnico. Se a informação não estiver nos documentos selecionados,",
     "diga explicitamente que não consta nas peças fornecidas — não invente.",
     "Atenção a peças de mero encaminhamento: no PJe é comum a petição conter apenas",
@@ -29,12 +31,41 @@
     "(ex.: as peças 'Documento de Comprovação' logo abaixo dela na lista).",
     "Formate a resposta em markdown quando ajudar a leitura: use títulos curtos,",
     "listas e tabelas (ex.: linha do tempo dos atos, partes, pedidos).",
-  ].join(" ");
+  ];
+  const SYSTEM_PROMPT = PROMPT_INICIO.concat(
+    [
+      "As citações precisas de trechos (com página) são geradas automaticamente pelo",
+      "sistema — apoie cada afirmação relevante no trecho correspondente sempre que",
+      "possível. Peças digitalizadas sem camada de texto podem não permitir citação",
+      "automática; nesse caso, apenas indique a peça pelo nome e avise o usuário.",
+    ],
+    PROMPT_FIM
+  ).join(" ");
+  const SYSTEM_PROMPT_CIT_TEXTUAL = PROMPT_INICIO.concat(
+    [
+      "Ao afirmar fatos relevantes, cite a peça E a página no PRÓPRIO texto, no",
+      "formato 'conforme a Contestação, fl. 12' — indique sempre a página do PDF",
+      "de origem quando conseguir identificá-la.",
+      "Se usar a busca na web, priorize fontes oficiais brasileiras: sites .jus.br",
+      "(tribunais, STF, STJ, TST, CNJ) e planalto.gov.br — cite a fonte de cada",
+      "informação obtida na web.",
+    ],
+    PROMPT_FIM
+  ).join(" ");
+  // O system prompt do turno depende do modelo ATUAL (caps) — usado no envio
+  // E no count_tokens, para o pré-voo medir o mesmo request que vai de fato.
+  function systemPromptAtual() {
+    return modelCaps && modelCaps.citacoesNativas === false
+      ? SYSTEM_PROMPT_CIT_TEXTUAL
+      : SYSTEM_PROMPT;
+  }
 
   // Limite de payload do FALLBACK base64 (quando o upload à Files API falha):
-  // a API aceita 32 MB por requisição; base64 infla ~33%. No caminho normal as
-  // peças são referenciadas por file_id e este teto não se aplica.
+  // a API da Anthropic aceita 32 MB por requisição (teto de 24 MB com folga);
+  // a do Gemini aceita ~20 MB (teto de 15 MB). base64 infla ~33%. No caminho
+  // normal as peças são referenciadas por file_id/uri e o teto não se aplica.
   const MAX_TOTAL_B64_CHARS = 24 * 1024 * 1024;
+  const MAX_TOTAL_B64_CHARS_GEMINI = 15 * 1024 * 1024;
 
   // Betas enviadas em todos os requests de chat (documentos por file_id).
   const BETAS_CHAT = ["files-api-2025-04-14"];
@@ -62,8 +93,11 @@
   }
 
   // Ferramentas de busca web na versão suportada pelo modelo atual.
+  // Gemini: google_search não aceita allowed_domains — a priorização de
+  // fontes .jus.br vai por instrução no system prompt (SYSTEM_PROMPT_CIT_TEXTUAL).
   function toolsBusca() {
     if (!modelCaps) return [];
+    if (modelCaps.provider === "gemini") return [{ type: "google_search" }];
     return [
       {
         type: modelCaps.webSearch,
@@ -94,6 +128,8 @@
       turnoUsd: fim.custoUsd,
       conversaUsd: custoConversaUsd,
       usage: fim.usage,
+      provedorNome:
+        modelCaps && modelCaps.provider === "gemini" ? "Google" : "Anthropic",
     });
   }
   // Peças cujos blocos document JÁ estão no histórico desta conversa. Anexamos
@@ -106,6 +142,11 @@
   // (mesmo com o toggle desligado) — remover trocaria o conjunto de tools,
   // invalidando o cache de prefixo e arriscando rejeição do histórico.
   let buscaNaConversa = false;
+  // Provedor (anthropic|gemini) do PRIMEIRO turno da conversa: o histórico de
+  // um provedor não é traduzível para o outro (thinking assinado da Anthropic
+  // vs. thought signatures do Gemini) — trocar no meio exige "Nova conversa".
+  let conversaProvider = null;
+  let alertaTrocaLigado = false; // o alerta atual é o de troca de provedor
   let busy = false;
   // Estimativa dinâmica de contexto (dispara quando a seleção muda): timer de
   // debounce + número de sequência para descartar respostas atrasadas +
@@ -120,6 +161,10 @@
     "O contexto da IA encheu: a conversa e as peças ocupam quase todo o limite do modelo. " +
     "Novas mensagens não serão aceitas — desmarque peças na lista para liberar espaço " +
     "(elas saem do contexto na hora) ou comece uma nova conversa.";
+  const ALERTA_TROCA_PROVEDOR =
+    "Você trocou entre um modelo Claude e um Gemini no meio da conversa — o histórico de um " +
+    "não é compatível com o outro (raciocínio assinado pelo provedor). Clique em ⟲ Nova " +
+    "conversa para usar o novo modelo, ou volte ao modelo anterior nas opções.";
 
   const panel = PjePanel.mount();
 
@@ -173,14 +218,46 @@
     });
   }
 
-  // Capacidades do modelo atual (limite de páginas, contexto, ferramentas web).
+  // Capacidades do modelo atual (limite de páginas, contexto, ferramentas web)
+  // + id do modelo e nível de raciocínio ativos (mostrados no selo do rodapé).
   let modelCaps = null;
+  let modelInfo = null; // {model, effort} da última resposta de caps
+
+  // Reflete na UI o que o modelo atual suporta: selo do modelo ativo, geração
+  // de .docx (só Anthropic), nota de citações textuais (Gemini) e a guarda de
+  // troca de provedor no meio da conversa. Chamada sempre que modelCaps muda.
+  function aplicarCapsNaUI() {
+    if (!modelCaps) return;
+    panel.setModelo(
+      modelInfo && {
+        model: modelInfo.model,
+        effort: modelInfo.effort,
+        comEffort: modelCaps.effort !== false,
+      }
+    );
+    panel.setDocxDisponivel(modelCaps.docx !== false);
+    panel.setModoCitacoes(modelCaps.citacoesNativas === false ? "textual" : "nativa");
+    const prov = modelCaps.provider || "anthropic";
+    if (conversation.length && conversaProvider && prov !== conversaProvider) {
+      panel.setAlerta(ALERTA_TROCA_PROVEDOR);
+      alertaTrocaLigado = true;
+    } else if (alertaTrocaLigado) {
+      // voltou ao provedor da conversa: o alerta de troca se resolve sozinho
+      panel.setAlerta(null);
+      alertaTrocaLigado = false;
+    }
+  }
+
   function refreshCaps() {
     if (!extensaoViva()) return;
     try {
       chrome.runtime.sendMessage({ type: "caps" }, (r) => {
         void chrome.runtime.lastError; // worker pode estar acordando — sem ruído
-        if (r && r.caps) modelCaps = r.caps;
+        if (r && r.caps) {
+          modelCaps = r.caps;
+          modelInfo = { model: r.model, effort: r.effort };
+          aplicarCapsNaUI();
+        }
       });
     } catch {
       avisarContextoPerdido();
@@ -197,7 +274,11 @@
       try {
         chrome.runtime.sendMessage({ type: "caps" }, (r) => {
           void chrome.runtime.lastError;
-          if (r && r.caps) modelCaps = r.caps;
+          if (r && r.caps) {
+            modelCaps = r.caps;
+            modelInfo = { model: r.model, effort: r.effort };
+            aplicarCapsNaUI();
+          }
           resolve(); // sem caps segue mesmo assim: count_tokens e a API guardam
         });
       } catch {
@@ -212,15 +293,22 @@
   function refreshKey() {
     if (!extensaoViva()) return;
     try {
-      chrome.storage.local.get(["apiKey"], (v) => panel.setConfigured(!!v.apiKey));
+      // a chave exigida é a do PROVEDOR do modelo escolhido (Anthropic ou
+      // Google) — o provedor sai do prefixo do id, sem esperar o caps chegar
+      chrome.storage.local.get(["apiKey", "geminiApiKey", "model"], (v) => {
+        const gemini = String(v.model || "").startsWith("gemini-");
+        panel.setConfigured(gemini ? !!v.geminiApiKey : !!v.apiKey);
+      });
     } catch {
       avisarContextoPerdido();
     }
   }
   refreshKey();
   chrome.storage.onChanged.addListener((ch, area) => {
-    if (area === "local" && ch.apiKey) refreshKey();
-    if (area === "local" && (ch.model || ch.apiKey)) refreshCaps();
+    if (area === "local" && (ch.apiKey || ch.geminiApiKey || ch.model)) refreshKey();
+    // effort entra aqui por causa do selo do modelo (mostra o nível ativo)
+    if (area === "local" && (ch.model || ch.apiKey || ch.geminiApiKey || ch.effort))
+      refreshCaps();
   });
   panel.onConfigure(() => {
     if (!extensaoViva()) return;
@@ -238,6 +326,8 @@
     panel.setCusto(null);
     pecasNaConversa.clear();
     buscaNaConversa = false;
+    conversaProvider = null; // conversa nova pode começar em qualquer provedor
+    alertaTrocaLigado = false;
     clearTimeout(estTimer);
     estSeq++; // descarta estimativas em voo
     ultimaChaveEst = ""; // próxima seleção re-mede do zero
@@ -360,9 +450,14 @@
   // upload não interrompe: a peça cai no fallback base64 (teto de 24 MB).
   async function subirPecas(ids) {
     const idProc = PJE.getIdProcesso() || "proc";
+    // um fileId da Anthropic não serve num request Gemini (e vice-versa):
+    // peça com upload de OUTRO provedor re-sobe para o provedor atual
+    const provAtual = (modelCaps && modelCaps.provider) || "anthropic";
     const pend = ids.filter((id) => {
       const d = docsCache.get(id);
-      return d && d.kind === "pdf" && !d.fileId;
+      return (
+        d && d.kind === "pdf" && (!d.fileId || (d.fileProvider || "anthropic") !== provAtual)
+      );
     });
     if (!pend.length) return;
     panel.setStatus("Enviando peças para análise…", true);
@@ -382,6 +477,7 @@
             },
           });
           d.fileId = r.fileId;
+          d.fileProvider = r.provider || "anthropic";
         } catch (e) {
           console.debug("[PJe IA] upload da peça", id, "falhou; usando base64:", e && e.message);
         }
@@ -429,7 +525,7 @@
     let r = null;
     try {
       const payload = {
-        system: SYSTEM_PROMPT,
+        system: systemPromptAtual(),
         messages,
         betas: (opts && opts.betas) || BETAS_CHAT,
       };
@@ -495,10 +591,13 @@
   function montarBlocos(ids) {
     const blocks = [];
     let totalB64 = 0;
+    // fileId só vale se o upload foi feito para o provedor ATUAL — um URI da
+    // File API do Google num request Anthropic (ou o inverso) daria 400
+    const provAtual = (modelCaps && modelCaps.provider) || "anthropic";
     for (const id of ids) {
       const d = docsCache.get(id);
       if (d.kind === "pdf") {
-        if (d.fileId) {
+        if (d.fileId && (d.fileProvider || "anthropic") === provAtual) {
           // caminho normal: referência por file_id (Files API) — payload mínimo
           blocks.push({
             type: "document",
@@ -529,13 +628,20 @@
         });
       }
     }
-    if (totalB64 > MAX_TOTAL_B64_CHARS) {
+    const tetoB64 =
+      provAtual === "gemini" ? MAX_TOTAL_B64_CHARS_GEMINI : MAX_TOTAL_B64_CHARS;
+    if (totalB64 > tetoB64) {
       const mb = Math.round(totalB64 / 1024 / 1024);
       throw new Error(
         `as peças selecionadas somam ~${mb} MB — acima do limite da análise. Desmarque algumas peças maiores e tente de novo.`
       );
     }
-    if (blocks.length) blocks[blocks.length - 1].cache_control = { type: "ephemeral" };
+    // Breakpoint de cache é conceito da Anthropic; o Gemini usa implicit
+    // caching (automático) e o gemini.js nem copiaria o campo — mas não
+    // sujar o histórico evita surpresas se o usuário voltar ao Claude.
+    if (blocks.length && provAtual !== "gemini") {
+      blocks[blocks.length - 1].cache_control = { type: "ephemeral" };
+    }
     return blocks;
   }
 
@@ -652,7 +758,7 @@
         port.postMessage({
           type: tipo || "chat",
           payload: Object.assign(
-            { system: SYSTEM_PROMPT, messages, betas: BETAS_CHAT },
+            { system: systemPromptAtual(), messages, betas: BETAS_CHAT },
             opts || {}
           ),
         });
@@ -764,12 +870,16 @@
 
   function estimativaLocalTokens(ids) {
     let t = 900; // system prompt + instruções fixas
+    // custo por página varia por provedor: Anthropic ≈ 2000 (texto+imagem
+    // citável); Gemini = 258 (documentação oficial) — vem do caps
+    const tokensPagina =
+      (modelCaps && modelCaps.tokensPagina) || TOKENS_POR_PAGINA_PDF;
     for (const id of ids) {
       const d = docsCache.get(id);
       if (!d) continue; // ainda não baixada: entra quando o download chegar
       t +=
         d.kind === "pdf"
-          ? (d.pages || 1) * TOKENS_POR_PAGINA_PDF
+          ? (d.pages || 1) * tokensPagina
           : Math.ceil(Math.min(d.text.length, 60000) / CHARS_POR_TOKEN);
     }
     for (const turn of conversation) {
@@ -912,6 +1022,7 @@
         if (e && e.ctxCheio) {
           ultimaChaveEst = ""; // com alerta ligado, a próxima mudança SEMPRE re-mede
           panel.setAlerta(ALERTA_CTX_CHEIO);
+          alertaTrocaLigado = false; // o alerta visível agora é o de contexto
         } else {
           console.debug("[PJe IA] estimativa dinâmica falhou:", e && e.message);
         }
@@ -923,6 +1034,16 @@
     if (busy) return;
     if (selectedIds.length === 0) {
       panel.setStatus("Marque ao menos uma peça — na lista acima ou digitando @ no campo.");
+      return;
+    }
+    // Troca de provedor no meio da conversa: bloqueia ANTES de qualquer
+    // mudança de estado (o histórico de um provedor não roda no outro).
+    // aplicarCapsNaUI já liga o alerta na troca do modelo; esta é a guarda
+    // dura para o caso de o envio chegar antes do refresh de caps.
+    const provTurno = (modelCaps && modelCaps.provider) || "anthropic";
+    if (conversation.length && conversaProvider && provTurno !== conversaProvider) {
+      panel.setAlerta(ALERTA_TROCA_PROVEDOR);
+      alertaTrocaLigado = true;
       return;
     }
     busy = true;
@@ -1000,6 +1121,9 @@
 
       conversation.push({ role: "user", content: userContent });
       for (const id of novas) pecasNaConversa.add(id);
+      if (!conversaProvider) {
+        conversaProvider = (modelCaps && modelCaps.provider) || "anthropic";
+      }
 
       panel.setStatus("Analisando…" + infoCtx, true);
       assistantEl = panel.addMessage("assistant", "");
@@ -1132,6 +1256,7 @@
           // o modelo estourou a janela no meio da resposta: alerta persistente
           ultimaChaveEst = "";
           panel.setAlerta(ALERTA_CTX_CHEIO);
+          alertaTrocaLigado = false; // o alerta visível agora é o de contexto
           st = "A resposta foi cortada: o limite de contexto do modelo foi atingido.";
         }
         panel.setStatus(st);
@@ -1140,6 +1265,10 @@
         panel.removeMessage(assistantEl);
         conversation.pop(); // remove o turno do usuário correspondente
         for (const id of novas) pecasNaConversa.delete(id); // peças saem junto
+        // conversa esvaziou: o rótulo de provedor cai junto (senão um turno
+        // futuro em OUTRO provedor herdaria o rótulo velho e a guarda de
+        // troca deixaria passar um histórico misto)
+        if (!conversation.length) conversaProvider = null;
         panel.setStatus("O modelo não retornou texto. Tente novamente.");
       }
     } catch (e) {
@@ -1150,6 +1279,7 @@
       if (e && e.ctxCheio) {
         ultimaChaveEst = "";
         panel.setAlerta(ALERTA_CTX_CHEIO);
+        alertaTrocaLigado = false; // o alerta visível agora é o de contexto
       }
       // remove a bolha vazia do assistente, se houver
       if (assistantEl && !acc) panel.removeMessage(assistantEl);
@@ -1158,6 +1288,8 @@
         conversation.pop();
       }
       for (const id of novas) pecasNaConversa.delete(id); // peças do turno desfeito
+      // conversa esvaziou: o rótulo de provedor cai junto (ver ramo acima)
+      if (!conversation.length) conversaProvider = null;
     } finally {
       busy = false;
       panel.lockInput(false);
@@ -1177,6 +1309,14 @@
 
   panel.onGerarDoc(async (text, selectedIds) => {
     if (busy) return;
+    // Defesa: o botão fica desabilitado nos modelos Gemini (setDocxDisponivel),
+    // mas o modelo pode ter sido trocado com o modo documento já armado.
+    if (modelCaps && modelCaps.docx === false) {
+      panel.setStatus(
+        "A geração de .docx não está disponível nos modelos Gemini — troque para um modelo Claude nas opções da extensão."
+      );
+      return;
+    }
     if (selectedIds.length === 0) {
       panel.setStatus("Marque as peças que devem embasar o documento.");
       return;

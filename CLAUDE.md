@@ -1,8 +1,10 @@
 # PJe IA — Extensão Chrome
 
 Extensão Chrome (Manifest V3, JavaScript puro, **sem build step**) que adiciona um painel
-de chat com Claude à tela de autos digitais do PJe. O usuário seleciona peças do
-processo e conversa sobre elas; os PDFs são enviados diretamente à API da Anthropic.
+de chat com IA à tela de autos digitais do PJe. O usuário seleciona peças do
+processo e conversa sobre elas; os PDFs são enviados diretamente à API do provedor do
+modelo escolhido — **Anthropic (Claude)** ou **Google (Gemini)**, ver a seção
+"Provedor Gemini".
 
 ## Arquitetura
 
@@ -40,8 +42,11 @@ streaming SSE — **a chave nunca chega ao contexto da página**. Dois canais co
   `onReinicio` zera TODO o estado de UI do turno (o novo stream re-emite do zero).
   Não transformar esse reenvio em erro imediato — era a causa nº 1 de ".docx falha
   às vezes" no Haiku.
-- **`chrome.runtime.sendMessage`** (request/response) para `caps` (capacidades do modelo),
-  `upload` (Files API) e `countTokens` (pré-voo gratuito).
+- **`chrome.runtime.sendMessage`** (request/response) para `caps` (capacidades do
+  modelo — a resposta traz `{model, effort, caps}`; model+effort alimentam o SELO do
+  modelo ativo `panel.setModelo` na barra de ferramentas, atualizado ao vivo pelo
+  `storage.onChanged` inclusive na troca de `effort`), `upload` (Files API) e
+  `countTokens` (pré-voo gratuito).
 
 ## Fluxo de um turno (protocolo v2)
 
@@ -61,10 +66,72 @@ o Haiku precisa de mais rodadas de code execution que o Sonnet e era onde o docx
 "falhava às vezes" sem explicação. `maxTokens` do docx é 32000 (16000 truncava o
 código do Haiku no meio).
 
-`MODEL_CAPS` em `background.js` governa por modelo: `contextTokens`, `maxPages` (600 nos
-modelos de 1M; 100 no Haiku), versões de `web_search`/`web_fetch` (variantes `_20260209`
-no Sonnet 5/Opus 4.8; básicas no Fable/Haiku), `thinking` (adaptive+summarized; omitido no
-Haiku) e `effort` (não suportado no Haiku).
+`MODEL_CAPS` em `background.js` governa por modelo: `provider` (anthropic|gemini),
+`contextTokens`, `maxPages` (600 nos modelos de 1M; 100 no Haiku; 1000 no Gemini),
+versões de `web_search`/`web_fetch` (variantes `_20260209` no Sonnet 5/Opus 4.8;
+básicas no Fable/Haiku), `thinking` (adaptive+summarized; omitido no Haiku) e `effort`
+(não suportado no Haiku; no Gemini vira `thinking_level`). Entradas Gemini têm ainda
+`docx:false`, `citacoesNativas:false`, `tokensPagina:258` e `preco.cacheRead`.
+
+## Provedor Gemini (Interactions API)
+
+`src/gemini.js` é o irmão de `claude.js` (que fica INTOCADO): emite o MESMO vocabulário
+de eventos (`{kind:"text"|"thinking"|"citation"|"tool"|"trunc"|"final"}`) a partir do SSE
+da **Interactions API** (`POST /v1beta/interactions`, header `x-goog-api-key` +
+`Api-Revision: 2026-05-20`; eventos `step.start`/`step.delta`/`interaction.completed`).
+`background.js` despacha por `providerDe(model)` (prefixo `gemini-`); `content.js` e
+`panel.js` só condicionam por **caps**, nunca por nome de modelo. Regras que NÃO podem
+quebrar:
+
+- **Modo stateless obrigatório** (`store:false`): o histórico interno continua nos
+  blocos estilo Anthropic (com `__pecaId`) e `traduzirHistorico` em gemini.js converte
+  NO REQUEST — o filtro de peças desmarcadas (`prepararEnvio`) funciona igual nos dois
+  provedores. NUNCA enviar `temperature/top_p/top_k` nem terminar o `input` com turno
+  do modelo (prefill → 400).
+- **Wrapper `x-gemini-item`**: todo step do Gemini que não seja texto puro sem
+  assinatura (thought assinado, `google_search_call/result`, texto com
+  `thought_signature`) é gravado no histórico como `{type:"x-gemini-item", raw: step}`
+  e devolvido VERBATIM no reenvio — thought signatures precisam voltar byte a byte
+  (regra análoga ao thinking assinado da Anthropic). `sanearCitacoes`/`prepararEnvio`
+  não tocam nesses blocos por construção.
+- **usage normalizado** para as 4 categorias da Anthropic em gemini.js
+  (`input = total_input − total_cached`; `cache_read = total_cached`;
+  `cache_creation = 0`; `output` inclui thoughts) — custo, tooltip e gauge funcionam
+  sem mudança. `custoUsdDe` usa `preco.cacheRead` quando existe (senão 0,1× o input,
+  regra Anthropic inalterada).
+- **Uploads por provedor**: a File API do Google EXPIRA em 48 h — o cache de sessão usa
+  namespace `gfile:` com `{uri, exp}` validado na leitura (vencido re-sobe), e cada peça
+  em `docsCache` guarda `d.fileProvider`: um `file_id` da Anthropic nunca entra num
+  request Gemini (e vice-versa; `montarBlocos`/`subirPecas` conferem). PDF Gemini:
+  ≤ 50 MB/1000 págs., 258 tokens/pág. Upload é resumable + poll de `state:ACTIVE`.
+- **Sem citações por página no Gemini** (`citacoesNativas:false`): o system prompt
+  alternativo (`SYSTEM_PROMPT_CIT_TEXTUAL` em content.js) manda citar peça e folha no
+  próprio texto; `panel.setModoCitacoes("textual")` mostra a nota `.cite-note`.
+  Annotations `url_citation` da busca viram citações web normais
+  (`web_search_result_location`).
+- **Sem .docx no Gemini** (`docx:false`): o code execution do Gemini não devolve
+  arquivos. `panel.setDocxDisponivel(false)` desabilita o botão com tooltip (e
+  `lockInput` respeita a flag `docxDisponivel`); guardas defensivas em
+  `content.onGerarDoc` e `background.gerarDocumento`.
+- **Busca**: toggle Jurisprudência no Gemini declara `[{type:"google_search"}]` — sem
+  `allowed_domains` (a API não suporta); a priorização de fontes .jus.br vai por
+  instrução no system prompt. Custo: 5.000 buscas/mês grátis, depois US$ 14/1.000.
+- **Troca de provedor no meio da conversa é BLOQUEADA** (`conversaProvider` em
+  content.js): o histórico de um provedor não roda no outro (raciocínio assinado).
+  `aplicarCapsNaUI` liga `ALERTA_TROCA_PROVEDOR` na troca do modelo e o envio tem
+  guarda dura; "Nova conversa" (ou voltar ao modelo anterior) resolve.
+- **Sem pause_turn no Gemini**: o loop de continuações de `executarTurno` sai na 1ª
+  iteração; retry transitório (429/5xx, `err.retryable`) funciona igual. Cache: só
+  implicit caching (automático) — `cache_control` não é gravado nos blocos quando o
+  provedor é gemini (e gemini.js nem copiaria o campo).
+- **Config**: chave em `chrome.storage.local.geminiApiKey` (a `apiKey` continua sendo a
+  da Anthropic); `chaveDe(cfg, provider)` escolhe e dá erro claro. popup/options têm os
+  DOIS campos e uma lista única de modelos com `<optgroup>`; o chip e o `refreshKey`
+  olham a chave do provedor do modelo selecionado. `manifest.json` inclui
+  `https://generativelanguage.googleapis.com/*`.
+- countTokens Gemini: `POST /models/{model}:countTokens` com `contents` traduzidos
+  (file_data/inline_data/texto; steps opacos viram texto) — aproximação aceitável, a
+  guarda de 90% e o `usageReq` pós-turno corrigem.
 
 ## Invariantes importantes
 
@@ -350,10 +417,12 @@ expandido.
   atuais da Anthropic (`claude-haiku-4-5` é o default em `background.js` — rápido e
   barato; todas as features funcionam nele, inclusive a skill docx com
   `code_execution_20260521`; a janela menor de 200 mil tokens/100 págs. é o custo
-  aceito, com o Sonnet 5 de 1M oferecido para autos volumosos) e a tabela
+  aceito, com o Sonnet 5 de 1M oferecido para autos volumosos) e do Google
+  (`gemini-3.6-flash`, `gemini-3.5-flash-lite` — GA na Interactions API), e a tabela
   `MODEL_CAPS` sincronizada com os docs (limites, versões de tools, thinking/effort).
-- Config no `chrome.storage.local`: `apiKey`, `model`, `effort` (baixo/médio/alto —
-  `output_config.effort`; omitido nos modelos sem suporte).
+- Config no `chrome.storage.local`: `apiKey` (Anthropic), `geminiApiKey` (Google),
+  `model`, `effort` (baixo/médio/alto — `output_config.effort` na Anthropic, omitido
+  nos modelos sem suporte; `generation_config.thinking_level` no Gemini).
 - Alternar o toggle de busca ou trocar de modelo invalida o cache de prompt daquele ponto
   em diante (comportamento aceito). Arquivos enviados à Files API persistem na conta
   (100 GB por organização) — "limpar uploads" é melhoria futura registrada.

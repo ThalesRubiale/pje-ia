@@ -2,7 +2,7 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <title>PJe IA — Como criar sua chave da API</title>
+    <title>PJe IA — Como criar sua chave da API (Anthropic ou Google)</title>
     <link rel="stylesheet" href="ui.css" />
     <style>
       body { display: block; padding: 0 0 60px; }
@@ -77,7 +77,10 @@
     <div class="page">
       <h1 class="serif">Criar sua chave da API da Anthropic</h1>
       <p class="lead">
-        A extensão usa o Claude (Anthropic) para analisar os autos. Você precisa de uma
+        A extensão funciona com os modelos <strong>Claude (Anthropic)</strong> e
+        <strong>Gemini (Google)</strong> — basta ter a chave do provedor do modelo escolhido.
+        Esta seção cobre a Anthropic; a chave do Google está
+        <a class="link" href="#gemini">logo abaixo</a>. Você precisa de uma
         <strong>chave de API própria</strong> e de <strong>crédito</strong> na sua conta. Leva ~3 minutos.
       </p>
 
@@ -135,9 +138,57 @@
         </ul>
       </div>
 
+      <h1 class="serif" id="gemini">Criar sua chave da API do Google (Gemini)</h1>
+      <p class="lead">
+        Para usar os modelos <strong>Gemini 3.6 Flash</strong> e <strong>Gemini 3.5 Flash-Lite</strong>,
+        crie uma chave no Google AI Studio. Leva ~2 minutos.
+      </p>
+
+      <div class="card">
+        <div class="head"><div class="num">1</div><h2>Acesse o Google AI Studio</h2></div>
+        <p>Entre com sua conta Google e abra a página de chaves de API.</p>
+        <a class="gobtn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Abrir aistudio.google.com/apikey ↗</a>
+      </div>
+
+      <div class="card">
+        <div class="head"><div class="num">2</div><h2>Crie a API Key</h2></div>
+        <p>Clique em <strong>Create API key</strong> (ou "Criar chave de API"). A chave começa com <code>AIza...</code>.</p>
+        <p>Há um <strong>nível gratuito</strong> com cota limitada — bom para testar. Para uso regular
+        (e para a busca de jurisprudência com Google Search), ative o faturamento do projeto no
+        Google Cloud, pela própria tela do AI Studio.</p>
+      </div>
+
+      <div class="card">
+        <div class="head"><div class="num">3</div><h2>Cole na extensão</h2></div>
+        <ul>
+          <li>Clique no ícone <strong>⚖️ PJe IA</strong> na barra do Chrome.</li>
+          <li>Cole a chave no campo <strong>"Chave da API — Google (modelos Gemini)"</strong>, escolha um modelo Gemini e clique em <strong>Salvar</strong>.</li>
+        </ul>
+        <p style="margin-top:10px"><em>Diferenças nos modelos Gemini: as citações de página aparecem no
+        próprio texto da resposta (sem os marcadores [n] clicáveis) e a geração de arquivo .docx
+        fica indisponível — esses dois recursos usam a API da Anthropic.</em></p>
+      </div>
+
+      <h1 class="serif">Como usar bem o chat (contexto e custo)</h1>
+      <div class="card">
+        <ul>
+          <li><strong>Comece marcando só as peças relevantes</strong> para a pergunta — cada peça
+          selecionada entra no contexto e é reenviada (com desconto de cache de ~90%) a cada turno.</li>
+          <li><strong>Adicionar peças no meio da conversa é barato e seguro</strong>: a peça nova entra
+          uma única vez, ao final, e o restante da conversa aproveita o cache. Não precisa criar um
+          novo chat para adicionar documentos.</li>
+          <li><strong>Desmarcar peça libera contexto na hora</strong>, mas invalida o cache daquele
+          ponto em diante (o turno seguinte re-paga o envio das peças restantes). Use quando o medidor
+          encher; para trocar de assunto ou remodelar a seleção inteira, prefira <strong>⟲ Nova conversa</strong>.</li>
+          <li><strong>O medidor no rodapé é o guia</strong>: perto de 90% da janela do modelo, desmarque
+          peças ou abra uma conversa nova. Vale para Claude e Gemini (ambos têm cache automático).</li>
+        </ul>
+      </div>
+
       <div class="warn-box">
-        🔒 Sua chave fica só neste navegador (não é enviada a lugar nenhum além da própria API da Anthropic).
-        As peças que você marcar são enviadas ao Claude para análise — processos podem conter dados sigilosos, use com critério.
+        🔒 Suas chaves ficam só neste navegador (não são enviadas a lugar nenhum além das próprias APIs
+        da Anthropic e do Google). As peças que você marcar são enviadas ao modelo escolhido para
+        análise — processos podem conter dados sigilosos, use com critério.
       </div>
     </div>
   </body>

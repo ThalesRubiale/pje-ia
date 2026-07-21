@@ -12,7 +12,7 @@
       <img src="../icons/icon48.png" alt="" />
       <div>
         <div class="t">PJe IA</div>
-        <div class="s">Análise de autos com Claude</div>
+        <div class="s">Análise de autos com IA — Claude ou Gemini</div>
       </div>
     </div>
 
@@ -22,7 +22,7 @@
       </div>
 
       <label class="field" for="apiKey">
-        Chave da API (Anthropic)
+        Chave da API — Anthropic (modelos Claude)
         <span class="hint">Não tem uma chave? <a href="help.html" target="_blank" style="color:var(--pje-2);font-weight:600">Veja o passo a passo →</a></span>
       </label>
       <div class="pw-row">
@@ -30,16 +30,31 @@
         <button class="toggle-pw" id="togglePw" type="button">mostrar</button>
       </div>
 
+      <label class="field" for="geminiApiKey">
+        Chave da API — Google (modelos Gemini)
+        <span class="hint">Opcional. Crie em aistudio.google.com — <a href="help.html#gemini" target="_blank" style="color:var(--pje-2);font-weight:600">passo a passo →</a></span>
+      </label>
+      <div class="pw-row">
+        <input id="geminiApiKey" type="password" placeholder="AIza..." autocomplete="off" />
+        <button class="toggle-pw" id="togglePwG" type="button">mostrar</button>
+      </div>
+
       <label class="field" for="model">Modelo</label>
       <select id="model">
-        <option value="claude-haiku-4-5">Claude Haiku 4.5 (padrão — rápido e barato)</option>
-        <option value="claude-sonnet-5">Claude Sonnet 5 (processos grandes — 1M tokens)</option>
-        <option value="claude-opus-4-8">Claude Opus 4.8</option>
-        <option value="claude-fable-5">Claude Fable 5 (mais capaz)</option>
+        <optgroup label="Claude (Anthropic)">
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 (padrão — rápido e barato)</option>
+          <option value="claude-sonnet-5">Claude Sonnet 5 (processos grandes — 1M tokens)</option>
+          <option value="claude-opus-4-8">Claude Opus 4.8</option>
+          <option value="claude-fable-5">Claude Fable 5 (mais capaz)</option>
+        </optgroup>
+        <optgroup label="Gemini (Google)">
+          <option value="gemini-3.6-flash">Gemini 3.6 Flash (1M tokens — rápido)</option>
+          <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite (1M tokens — o mais barato)</option>
+        </optgroup>
       </select>
 
       <label class="field" for="effort">Nível de raciocínio
-        <span class="hint">Alto = mais qualidade; Baixo = mais rápido e barato.</span>
+        <span class="hint">Alto = mais qualidade; Baixo = mais rápido e barato. Nos modelos Gemini vira o nível de "thinking".</span>
       </label>
       <select id="effort">
         <option value="high" selected>Alto (recomendado)</option>
@@ -67,7 +82,7 @@
       </div>
 
       <div class="note">
-        As peças marcadas são enviadas à API da Anthropic. Processos podem conter dados sigilosos — use conforme as normas do seu tribunal.
+        As peças marcadas são enviadas à API do provedor do modelo escolhido (Anthropic ou Google). Processos podem conter dados sigilosos — use conforme as normas do seu tribunal.
       </div>
     </div>
 
