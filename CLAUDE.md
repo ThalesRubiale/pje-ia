@@ -393,11 +393,19 @@ texto e o checkbox correspondente é alternado. Detalhes fáceis de quebrar:
   a query digitada após o `@` — a digitação continua no textarea (não é um
   input; `aria-hidden`, atualizado em `renderMention` via `mention.query`/
   `mention.total`). Sem ele ninguém descobria que dava para filtrar.
-- **Busca sem resultado NÃO fecha o popup**: mostra o estado vazio ("nenhuma
-  peça…") — o campo de busca sumir no meio da digitação parecia travamento.
+- **Busca sem resultado NÃO fecha o popup** (até 20 chars de query): mostra o
+  estado vazio ("nenhuma peça…") — o campo de busca sumir no meio da digitação
+  parecia travamento. ACIMA de 20 chars sem resultado o popup FECHA: o usuário
+  está escrevendo a frase (um "@" que não é peça), não buscando — sem isso o
+  popup ficava aberto re-renderizando a cada tecla até o fim da mensagem.
   Com a lista vazia o teclado é liberado (só Esc é capturado): Enter ENVIA a
   mensagem normalmente — capturá-lo bloquearia mensagens com "@algo" que não
   é peça — e as setas movem o caret.
+- **Cursor falso do campo de busca**: reiniciado a cada `renderMention`
+  (`style.animation = "none"` + reflow + limpa) — fica SÓLIDO enquanto se
+  digita e pisca só parado, como um cursor real; `.mq-t` usa `white-space:
+  pre` e a query CRUA (sem trim) para o espaço final mover o cursor; no
+  vazio o `order` põe o cursor ANTES do placeholder.
 
 ## Geração de .docx (skill oficial)
 

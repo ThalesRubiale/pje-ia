@@ -391,6 +391,7 @@ var PjePanel = (function () {
     const mentionList = $(".mention-list");
     const mentionQT = $(".mq-t"); // espelho ao vivo da busca digitada após o @
     const mentionQN = $(".mq-n"); // contador de peças encontradas
+    const mentionQC = $(".mq-caret"); // cursor falso (re-sincronizado a cada tecla)
     const inEl = $(".in");
     const sendBtn = $(".send");
 
@@ -1123,9 +1124,12 @@ var PjePanel = (function () {
       if (!tok || !allDocs.length) return closeMention();
       const q = norm(tok.query.trim());
       const all = allDocs.filter((d) => !q || norm(d.titulo).includes(q));
-      // busca sem resultado NÃO fecha o popup: o campo de busca visível
-      // sumir no meio da digitação parecia travamento — mostra o estado
-      // vazio (o teclado volta ao normal: Enter envia, Esc fecha)
+      // Busca sem resultado NÃO fecha o popup na hora (o campo de busca
+      // sumir no meio da digitação parecia travamento) — mostra o estado
+      // vazio. MAS: se a query sem resultado passa de 20 chars, o usuário
+      // está escrevendo a frase (um "@" que não é peça), não buscando —
+      // aí sim o popup fecha e para de re-renderizar a cada tecla.
+      if (!all.length && tok.query.trim().length > 20) return closeMention();
       const items = all.slice(0, MENTION_MAX);
       const prevId =
         mention && mention.items[mention.idx] ? mention.items[mention.idx].id : null;
@@ -1136,7 +1140,7 @@ var PjePanel = (function () {
         items,
         extra: all.length - items.length,
         idx: keepIdx >= 0 ? keepIdx : 0,
-        query: tok.query.trim(),
+        query: tok.query, // CRU (sem trim): o espelho mostra até o espaço final
         total: all.length,
       };
       renderMention();
@@ -1150,6 +1154,11 @@ var PjePanel = (function () {
       mentionQT.classList.toggle("vazio", !mention.query);
       mentionQT.textContent =
         mention.query || "digite para buscar pelo nome da peça…";
+      // cursor de verdade fica SÓLIDO enquanto se digita e pisca parado:
+      // reinicia a animação a cada render (o keyframe começa na fase visível)
+      mentionQC.style.animation = "none";
+      void mentionQC.offsetWidth; // força o reflow que zera a animação
+      mentionQC.style.animation = "";
       mentionQN.textContent =
         mention.total === 0
           ? "nenhuma peça"
