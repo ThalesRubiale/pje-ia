@@ -125,13 +125,14 @@ quebrar:
   termina SEM `interaction.completed` (queda "limpa" de conexão) e status
   `failed/cancelled` LANÇAM erro retryable — resposta parcial nunca passa por
   completa.
-- **Teto de saída no Gemini: NÃO enviar campo nenhum** (invariante testado). O
-  limite dos modelos é 65.536 tokens e, omitido, a saída vai até ele — o máximo
-  possível. A Interactions API não documenta campo de max output; repassar o
-  `req.max_tokens` de 32000 do caminho Anthropic cortaria o teto pela metade, e
-  nome chutado (`max_output_tokens`) arriscaria 400 em todo request. O `max_tokens`
-  de 32000 continua correto na Anthropic (parâmetro OBRIGATÓRIO lá; 32K é o valor
-  aceito por todos os modelos Claude). Cache: só
+- **Teto de saída no Gemini: `generation_config.max_output_tokens = 65536` SEMPRE
+  explícito** (invariante testado) — o máximo dos dois modelos, para a resposta
+  nunca ser cortada por um default menor. O campo não aparece nas páginas de docs,
+  mas é o que o AI Studio gera nos exemplos oficiais da Interactions API (fonte da
+  confirmação, 2026-07). NUNCA repassar o `req.max_tokens` de 32000 do caminho
+  Anthropic — cortaria o teto pela metade. O `max_tokens` de 32000 continua correto
+  na Anthropic (parâmetro OBRIGATÓRIO lá; 32K é o valor aceito por todos os
+  modelos Claude). Cache: só
   implicit caching (automático) — `cache_control` não é gravado nos blocos quando o
   provedor é gemini (e gemini.js nem copiaria o campo).
 - **Config**: chave em `chrome.storage.local.geminiApiKey` (a `apiKey` continua sendo a

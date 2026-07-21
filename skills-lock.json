@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skills/gemini-api-dev/SKILL.md",
       "computedHash": "f9c8540a0264c641f993286e714723571bfafb216a4db00c214e9234740b0351"
+    },
+    "gemini-interactions-api": {
+      "source": "google-gemini/gemini-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gemini-interactions-api/SKILL.md",
+      "computedHash": "39a67aefac061dcdb0b1eae1ff44b4a493b0e2fa5b4b2676ea3324e92680be33"
     }
   }
 }

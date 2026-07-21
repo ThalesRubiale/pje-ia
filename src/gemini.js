@@ -16,12 +16,13 @@
 //    Body: {model, system_instruction, input, store:false, stream:true,
 //    tools?, generation_config:{thinking_level}}. PROIBIDO: temperature/
 //    top_p/top_k e terminar o input com turno do modelo (prefill) → 400.
-//    TETO DE SAÍDA: o limite dos modelos é 65.536 tokens e NÃO enviamos
-//    campo nenhum — omitido, o modelo gera até o teto (máximo possível).
-//    A Interactions API não documenta um campo de max output (só
-//    thinking_level/temperature no generation_config); NUNCA repassar o
-//    req.max_tokens do caminho Anthropic (32000): cortaria o teto pela
-//    metade, e um nome de campo chutado daria 400 em todo request.
+//    TETO DE SAÍDA: enviamos generation_config.max_output_tokens = 65536
+//    EXPLÍCITO — o limite máximo dos modelos (3.6 Flash e 3.5 Flash-Lite),
+//    para a resposta nunca ser cortada por um default menor. O campo não
+//    está nas páginas de docs, mas é o que o próprio AI Studio gera nos
+//    exemplos oficiais da Interactions API (confirmado em 2026-07). NUNCA
+//    repassar o req.max_tokens do caminho Anthropic (32000): cortaria o
+//    teto pela metade.
 //  - input (modo STATELESS, o nosso): array com turnos
 //    {type:"user_input", content:[{type:"text",text} | {type:"document",
 //    uri|data, mime_type}]} e, para o histórico do modelo, os próprios STEPS
@@ -153,11 +154,14 @@ function traduzirHistorico(messages) {
   return input;
 }
 
+// Teto de saída dos modelos Gemini suportados (65.536) — sempre explícito
+// no request para a resposta nunca ser cortada por um default menor.
+const MAX_OUTPUT_TOKENS = 65536;
+
 // req: {apiKey, model, system, messages, tools?, thinkingLevel?}
 // Campos do caminho Anthropic (betas, container, thinking, output_config,
-// max_tokens) são simplesmente ignorados — em especial max_tokens: sem teto
-// declarado, a saída vai até o limite do modelo (65.536 tokens; ver o
-// cabeçalho do arquivo antes de "melhorar" isso).
+// max_tokens) são simplesmente ignorados — em especial max_tokens (32000):
+// aqui o teto é MAX_OUTPUT_TOKENS (ver o cabeçalho do arquivo).
 export async function* streamGemini(req) {
   const body = {
     model: req.model,
@@ -165,10 +169,11 @@ export async function* streamGemini(req) {
     input: traduzirHistorico(req.messages),
     store: false,
     stream: true,
+    generation_config: { max_output_tokens: MAX_OUTPUT_TOKENS },
   };
   if (req.tools && req.tools.length) body.tools = req.tools;
   if (req.thinkingLevel) {
-    body.generation_config = { thinking_level: req.thinkingLevel };
+    body.generation_config.thinking_level = req.thinkingLevel;
   }
 
   const resp = await fetch(API + "/interactions", {
