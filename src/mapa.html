@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mapa mental — PJe IA</title>
+    <link rel="stylesheet" href="ui.css" />
+    <link rel="stylesheet" href="mapa.css" />
+  </head>
+  <body>
+    <header class="topo">
+      <img src="../icons/icon48.png" alt="" width="28" height="28" />
+      <div class="tit">
+        <span class="t serif">Mapa mental</span>
+        <span class="s" id="subtitulo">carregando…</span>
+      </div>
+      <div class="acoes">
+        <span class="grupo" role="group" aria-label="Nível de detalhe">
+          <span class="rot">Detalhe</span>
+          <button data-nivel="1" title="Mostrar só os eixos principais">1</button>
+          <button data-nivel="2" class="on" title="Eixos e seus tópicos (padrão)">2</button>
+          <button data-nivel="3" title="Três níveis abertos">3</button>
+          <button data-nivel="0" title="Abrir o mapa inteiro">Tudo</button>
+        </span>
+        <span class="grupo" role="group" aria-label="Zoom">
+          <button id="mais" title="Aproximar">＋</button>
+          <button id="menos" title="Afastar">−</button>
+          <button id="ajustar" title="Ajustar o mapa à tela">⤢ Ajustar</button>
+        </span>
+        <span class="grupo">
+          <button id="md" title="Baixar o texto do mapa em Markdown (.md)">⬇ .md</button>
+          <button id="imprimir" title="Imprimir o mapa ou salvar em PDF">🖨 Imprimir</button>
+          <button id="tema" title="Tema escuro">🌙</button>
+        </span>
+      </div>
+    </header>
+
+    <main class="tela">
+      <svg id="mapa" aria-label="Mapa mental do processo"></svg>
+      <div class="aviso" id="aviso" hidden></div>
+      <div class="rodape">
+        <div class="legenda" id="legenda" hidden></div>
+        <p class="dica">
+          Clique num círculo para abrir ou fechar o ramo · arraste para mover · role para dar zoom
+        </p>
+      </div>
+    </main>
+
+    <script src="../vendor/d3.min.js"></script>
+    <script src="../vendor/markmap-view.js"></script>
+    <script src="mapa.js"></script>
+  </body>
+</html>

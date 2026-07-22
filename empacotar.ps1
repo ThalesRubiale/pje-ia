@@ -1,6 +1,6 @@
 # Empacota a extensão para a Chrome Web Store.
 # Uso: pwsh ./empacotar.ps1  →  gera pje-ia-v<versão>.zip na raiz (ignorado pelo git).
-# O ZIP contém APENAS o que a extensão precisa em runtime: manifest.json, src/, icons/.
+# O ZIP contém APENAS o que a extensão precisa em runtime: manifest.json, src/, icons/, vendor/.
 
 $ErrorActionPreference = "Stop"
 $raiz = $PSScriptRoot
@@ -22,6 +22,8 @@ New-Item -ItemType Directory -Path $staging | Out-Null
 Copy-Item (Join-Path $raiz "manifest.json") $staging
 Copy-Item (Join-Path $raiz "src") (Join-Path $staging "src") -Recurse
 Copy-Item (Join-Path $raiz "icons") (Join-Path $staging "icons") -Recurse
+# vendor/: d3 + markmap-view, usados pela página do mapa mental (src/mapa.html)
+Copy-Item (Join-Path $raiz "vendor") (Join-Path $staging "vendor") -Recurse
 
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $staging "*") -DestinationPath $zip

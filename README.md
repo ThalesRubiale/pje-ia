@@ -58,6 +58,7 @@ investigação aberta, um agente com MCP é o caminho — o próprio painel suge
 - **Citações com página** *(modelos Claude)* — as afirmações vêm com marcadores `[n]` e a lista de fontes ("Contestação, fl. 12") no rodapé; nos modelos Gemini a citação vem no próprio texto ("conforme a Contestação, fl. 12").
 - **Busca de jurisprudência** 🔍 — toggle que libera pesquisa na web (fontes oficiais: STF, STJ, Planalto, LexML…), com a consulta em andamento exibida em tempo real. Nos modelos Gemini usa o Google Search.
 - **Gerar .docx** 📄 *(modelos Claude)* — relatório do processo em Word de verdade (skill oficial da Anthropic), baixado direto pelo navegador.
+- **Mapa mental** 🧠 *(nos dois provedores)* — o modelo organiza as peças marcadas nos eixos da análise processual (partes, fatos, pedidos, teses, provas, audiências, decisões, prazos, situação) e a extensão abre um **mapa interativo** em nova aba (markmap): cada eixo com ícone e cor próprios, **tabelas** onde a informação é tabular, **pílulas** de folha, id da peça, data, valor e norma, e a origem (`peça · id · fl.`) em cada tópico. Nasce recolhido, com níveis de detalhe, zoom, tema escuro, impressão/PDF e download do texto em `.md`.
 - **Biblioteca de prompts** ✦ — salve instruções que você repete (título + texto) e insira-as digitando **`/`** no início do campo: o prompt vira um chip elegante acima da caixa de texto e é enviado antes da sua mensagem. Gerenciamento (criar/editar/excluir) no botão **✦ Prompts**, e os prompts acompanham você em outros navegadores pela sincronização da conta Google.
 - **OCR nativo** — peças digitalizadas (imagem) são lidas pelo próprio modelo, sem OCR externo.
 
@@ -153,6 +154,34 @@ logado na mesma conta Google.
   <img src="docs/biblioteca-de-prompts.gif" alt="Biblioteca de prompts: digitar / abre o popup de prompts salvos, a busca filtra pelo título e o prompt escolhido vira um chip acima do campo de mensagem" width="860">
 </p>
 
+### 🧠 Mapa mental: o processo inteiro numa página
+
+Quando o que você precisa é **enxergar a estrutura** do feito — e não ler mais um
+relatório —, marque as peças e clique em **🧠 Mapa mental**. A instrução padrão
+(editável, como no `.docx`) aparece no campo e o botão Enviar vira **Gerar mapa**;
+a resposta abre em **nova aba** como um mapa interativo, com o número do processo no
+centro e um ramo por eixo (partes, fatos, pedidos, teses, provas, situação atual).
+
+O mapa nasce **recolhido**: clique num círculo para abrir o ramo, use os botões de
+**detalhe 1/2/3/Tudo** para abrir vários de uma vez, arraste para mover, role para
+dar zoom. Cada eixo tem ícone e cor próprios (a mesma paleta das categorias de peças),
+e o que é tabular — partes, linha do tempo — vira **tabela** dentro do nó. Folhas,
+ids de peça, datas, valores e artigos ganham **destaque colorido**.
+
+**Toda afirmação aponta a origem**: cada tópico traz, em linha própria, a peça, o
+**id do documento** (o número que abre o título da peça na timeline do PJe) e a
+**folha** — é assim que você reencontra o trecho nos autos. O cabeçalho mostra
+quantos tópicos vieram com peça e folha. Ainda dá para alternar o **tema escuro**,
+baixar o texto em **`.md`** e **imprimir** (ou salvar em PDF, já enquadrado).
+
+> Diferente do `.docx`, o mapa mental funciona **nos dois provedores** — Claude e
+> Gemini —, porque não depende de execução de código no servidor da Anthropic.
+> Os mapas gerados ficam disponíveis enquanto o navegador estiver aberto.
+
+<p align="center">
+  <img src="docs/mapa-mental.jpg" alt="Mapa mental do processo: eixos da análise processual com ícone e cor próprios, tabelas de partes e de decisões, e a origem (peça, id e folha) sob cada tópico" width="860">
+</p>
+
 ### 🏛️ Todos os tribunais, sem configurar nada
 
 A extensão funciona em **qualquer tribunal que rode PJe** (TJs, TRFs, TRTs — 1º ou 2º
@@ -193,6 +222,8 @@ flowchart LR
 | `src/prompts.js` | Biblioteca de prompts do usuário: CRUD no `chrome.storage.sync` (um item por prompt), sincronizado entre os navegadores da mesma conta Google. |
 | `src/content.js` | Orquestra: downloads paralelos, cache por peça, prompt caching, conversa multi-turno. |
 | `src/background.js` + `claude.js` / `gemini.js` | Service worker que guarda as chaves e chama a API do provedor do modelo escolhido (Anthropic ou Google) com streaming. **As chaves nunca são expostas à página.** |
+| `src/mapa.html` + `mapa.js` / `mapa.css` | Página do **mapa mental**: converte o Markdown da resposta em árvore de nós (com ícones por eixo, tabelas e realces de fl./id) e desenha com markmap (d3), em aba própria da extensão. |
+| `vendor/` | `d3.min.js` e `markmap-view.js` oficiais, sem modificação, usados **só** pela página do mapa (nunca carregados nas páginas do PJe). Licenças em `vendor/LICENSES.md`. |
 | `src/popup.html` | Configuração em 1 clique no ícone da barra (chave, modelo, guia de primeiros passos). |
 
 ## 🔒 Privacidade e segurança
@@ -215,6 +246,7 @@ flowchart LR
 - [x] Carregamento automático da timeline completa (peças fora da rolagem)
 - [x] Segundo provedor de IA — Google Gemini (3.6 Flash / 3.5 Flash-Lite)
 - [x] Preview de peças, modo lateral e "ver na timeline"
+- [x] Mapa mental interativo das peças (markmap), nos dois provedores
 - [x] Biblioteca de prompts do usuário (`/` no campo, sincronizada entre navegadores)
 - [ ] Compaction para conversas muito longas
 - [ ] Limpeza de uploads antigos na Files API

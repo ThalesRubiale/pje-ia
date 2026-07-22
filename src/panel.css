@@ -881,13 +881,13 @@
   background: #e9f2f8; border-color: var(--pje); color: var(--text);
   font-weight: 600; box-shadow: inset 0 0 0 1px rgba(0, 120, 170, 0.35);
 }
-.btn-docx, .btn-plib {
+.btn-docx, .btn-plib, .btn-mapa {
   border: 1px solid var(--line); background: #fff; color: var(--muted);
   border-radius: 999px; padding: 3px 11px; font-size: 11.5px; cursor: pointer;
   transition: all 0.15s;
 }
-.btn-docx:hover, .btn-plib:hover { border-color: var(--pje); color: var(--text); }
-.btn-docx.on {
+.btn-docx:hover, .btn-plib:hover, .btn-mapa:hover { border-color: var(--pje); color: var(--text); }
+.btn-docx.on, .btn-mapa.on {
   background: #e9f2f8; border-color: var(--pje); color: var(--text);
   font-weight: 600; box-shadow: inset 0 0 0 1px rgba(0, 120, 170, 0.35);
 }
@@ -907,24 +907,55 @@
 
 /* ---------- Modo documento (.docx) ----------
    Faixa entre as ferramentas e o campo: explica que Enviar virou "Gerar". */
-.docxbar {
+.docxbar, .mapabar {
   display: flex; align-items: center; gap: 8px;
   background: #eaf4fa; border: 1px solid rgba(0, 120, 170, 0.35);
   border-left: 3px solid var(--pje);
   border-radius: 0 8px 8px 0; padding: 6px 10px; margin: 7px 0 5px;
   font-size: 12px; color: #2b5568; animation: chip-in 0.18s ease-out;
 }
-.docxbar[hidden] { display: none; }
+.docxbar[hidden], .mapabar[hidden] { display: none; }
 .docxbar-t { flex: 1; min-width: 0; line-height: 1.4; }
 .docxbar-t b { color: var(--pje-2); }
-.docxbar-x {
+.docxbar-x, .mapabar-x {
   flex: none; border: none; background: transparent; color: var(--muted);
   cursor: pointer; font-size: 13px; line-height: 1; padding: 3px 7px;
   border-radius: 6px;
 }
-.docxbar-x:hover { background: #ddeaf2; color: var(--text); }
+.docxbar-x:hover, .mapabar-x:hover { background: #ddeaf2; color: var(--text); }
 /* o botão Enviar vira "📄 Gerar" — halo azul para marcar a mudança */
 .send.docx { box-shadow: 0 0 0 3px rgba(0, 120, 170, 0.28); }
+
+/* ---------- Card do mapa mental gerado (dentro da bolha do assistant) ----------
+   O markdown de um mapa é longo e repetitivo: a bolha mostra as ações e
+   guarda o texto num <details> recolhido. */
+.mapacard-t { font-size: 13px; margin-bottom: 8px; }
+.mapacard-t b { color: var(--pje-2); }
+.mapacard-acts { display: flex; gap: 7px; flex-wrap: wrap; }
+.mapacard-abrir, .mapacard-md {
+  border: 1px solid var(--line); background: #fff; color: var(--text);
+  border-radius: 8px; padding: 6px 12px; font-size: 12.5px; cursor: pointer;
+  transition: all 0.15s;
+}
+.mapacard-abrir {
+  background: linear-gradient(180deg, var(--pje), var(--pje-2));
+  border-color: var(--pje-2); color: #fff; font-weight: 600;
+}
+.mapacard-abrir:hover { filter: brightness(1.06); }
+.mapacard-md:hover { border-color: var(--pje); }
+.mapacard-src { margin-top: 9px; }
+.mapacard-src > summary {
+  cursor: pointer; font-size: 11.5px; color: var(--muted); list-style: none;
+}
+.mapacard-src > summary::-webkit-details-marker { display: none; }
+.mapacard-src > summary::before { content: "▸ "; }
+.mapacard-src[open] > summary::before { content: "▾ "; }
+.mapacard-src > summary:hover { color: var(--pje-2); }
+.mapacard-md-body {
+  margin-top: 6px; padding: 8px 10px; background: var(--paper);
+  border: 1px solid var(--line); border-radius: 8px;
+  max-height: 260px; overflow: auto;
+}
 
 /* ---------- Gerenciador de prompts salvos (modal no Shadow DOM) ---------- */
 .plib {

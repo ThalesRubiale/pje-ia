@@ -269,7 +269,46 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })();
     return true;
   }
+
+  // Guarda o markdown de um mapa mental para a página src/mapa.html abrir.
+  // Vai por storage.session (some ao fechar o navegador, não polui o local) e
+  // é o worker quem grava: a página é contexto confiável e lê direto, e o
+  // content script não precisa de acesso à área session.
+  if (msg.type === "guardarMapa") {
+    (async () => {
+      try {
+        const id = String(Date.now()) + "-" + Math.random().toString(36).slice(2, 8);
+        await sessSet("mapa:" + id, {
+          md: msg.payload.md,
+          titulo: msg.payload.titulo,
+          processo: msg.payload.processo,
+          ts: Date.now(),
+        });
+        await podarMapas();
+        sendResponse({ id });
+      } catch (e) {
+        sendResponse({ error: String((e && e.message) || e) });
+      }
+    })();
+    return true;
+  }
 });
+
+// Mantém no máximo MAX_MAPAS mapas na sessão (cada um é o markdown inteiro de
+// um processo; sem poda, uma tarde de uso encheria a cota de 10 MB).
+const MAX_MAPAS = 5;
+function podarMapas() {
+  return new Promise((resolve) =>
+    chrome.storage.session.get(null, (tudo) => {
+      const chaves = Object.keys(tudo || {})
+        .filter((k) => k.startsWith("mapa:"))
+        .sort((a, b) => (tudo[b].ts || 0) - (tudo[a].ts || 0));
+      const sobrando = chaves.slice(MAX_MAPAS);
+      if (!sobrando.length) return resolve();
+      chrome.storage.session.remove(sobrando, resolve);
+    })
+  );
+}
 
 // Remove o campo citations dos blocos de texto antes de reenviar conteúdo do
 // assistant à API: citações reenviadas são rejeitadas (400 "Extra inputs" /

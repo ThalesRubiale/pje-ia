@@ -807,6 +807,18 @@
     setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 
+  // Idem para conteúdo já em texto (markdown do mapa mental) — sem passar por
+  // base64, que só existe no caminho dos arquivos vindos da API.
+  function baixarTexto(filename, texto, mime) {
+    const blob = new Blob([texto], { type: mime || "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+
   // Rótulo humano de uma citação da API: "Peça, fl(s). X[–Y]" (fim exclusivo)
   // para PDFs; título do site (com link) para resultados da busca web;
   // só o título para documentos de texto (char_location).
@@ -1491,6 +1503,184 @@
       panel.lockInput(false);
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Mapa mental (markmap): um turno de chat comum cuja resposta é markdown
+  // hierárquico. Não usa tools, skills nem code execution — por isso funciona
+  // TAMBÉM nos modelos Gemini, ao contrário do .docx. O markdown vai para o
+  // worker (storage.session) e a página src/mapa.html desenha o mapa.
+  // ---------------------------------------------------------------------------
+  const INSTRUCAO_MAPA_PADRAO =
+    "Mapeie o processo: partes e representantes, síntese dos fatos, pedidos, teses de cada " +
+    "parte, provas produzidas, decisões proferidas e situação atual do feito.";
+
+  // Prescritivo pelo mesmo motivo do sufixo do .docx: modelos menores (Haiku)
+  // seguem instruções ao pé da letra, e o parser de src/mapa.js só entende
+  // títulos e listas — preâmbulo, tabela ou bloco de código estragariam o mapa.
+  const SUFIXO_MAPA =
+    " Responda APENAS com o mapa em Markdown, sem nenhum texto antes ou depois e sem blocos" +
+    " de código." +
+    " ESTRUTURA: uma única linha começando com # (o processo e seu número); em seguida as" +
+    " seções com ##, sempre NESTA ORDEM da análise processual, incluindo só as que os autos" +
+    " permitirem: Partes e representação; Fatos (cronológicos); Pedidos; Teses e defesa;" +
+    " Provas; Audiências; Decisões (cronológicas); Recursos; Prazos; Situação atual. Dentro de" +
+    " cada seção, itens com \"-\", aninhados por indentação de dois espaços e no máximo três" +
+    " níveis. Cada item é um rótulo curto (até cerca de 12 palavras), não uma frase completa." +
+    " ORIGEM OBRIGATÓRIA: todo item que afirme algo dos autos TERMINA com a referência entre" +
+    " parênteses, no formato (Título da peça, id 123456, fl. 7) — o id é o número que abre o" +
+    " título de cada peça na lista abaixo e a folha é a do PDF daquela peça. Sem folha" +
+    " identificável, use (Título da peça, id 123456). NUNCA invente id, folha, data ou valor." +
+    " RECURSOS: use **negrito** no rótulo do item e ==destaque== no que for decisivo; quando a" +
+    " informação for tabular (partes, linha do tempo, valores, prazos), use UMA tabela Markdown" +
+    " na seção correspondente, com no máximo 3 colunas e células curtas. NÃO use emojis," +
+    " imagens, HTML, fórmulas nem numeração de tópicos.";
+
+  panel.onMapa(async (text, selectedIds) => {
+    if (busy) return;
+    if (selectedIds.length === 0) {
+      panel.setStatus("Marque as peças que devem embasar o mapa mental.");
+      return;
+    }
+    busy = true;
+    panel.lockInput(true);
+
+    const instrucao = (text && text.trim()) || INSTRUCAO_MAPA_PADRAO;
+    panel.addMessage(
+      "user",
+      "🧠 Gerar mapa mental: " + instrucao,
+      selectedIds.map((id) => metaDe(id).titulo)
+    );
+    let assistantEl = null;
+    let acc = "";
+    let ckptMapa = ""; // texto na UI no início do request físico corrente
+
+    try {
+      await baixarSelecionadas(selectedIds);
+      guardaPaginas(selectedIds);
+      await subirPecas(selectedIds);
+      const blocos = montarBlocos(selectedIds);
+      panel.endPrep();
+
+      panel.setStatus("Montando o mapa mental a partir das peças marcadas…", true);
+      assistantEl = panel.addMessage("assistant", "");
+
+      // Request ISOLADO, como o .docx: não entra em conversation nem em
+      // pecasNaConversa — o anexo incremental e o histórico do chat seguem
+      // intactos, e gerar um mapa não muda a conversa em andamento.
+      const messages = prepararEnvio(
+        [
+          {
+            role: "user",
+            content: [
+              ...blocos,
+              {
+                type: "text",
+                // A lista de peças vai explícita no texto (além do title de
+                // cada bloco document) porque o id é OBRIGATÓRIO na origem de
+                // cada tópico: é por ele que o usuário reencontra a peça na
+                // timeline do PJe.
+                text:
+                  instrucao +
+                  SUFIXO_MAPA +
+                  " Peças anexadas, use exatamente estes ids: " +
+                  selectedIds.map((id) => metaDe(id).titulo).join("; ") +
+                  ".",
+              },
+            ],
+          },
+        ],
+        null
+      );
+
+      const fimMapa = await stream(messages, {
+        onDelta(delta) {
+          acc += delta;
+          panel.updateAssistant(assistantEl, acc);
+        },
+        onThinking() {
+          if (!acc) panel.setStatus("Organizando os eixos do mapa…", true);
+        },
+        onTool() {},
+        onTrunc() {},
+        onIter() {
+          ckptMapa = acc;
+        },
+        onRetry() {
+          acc = ckptMapa;
+          panel.updateAssistant(assistantEl, acc);
+          panel.setStatus("Instabilidade momentânea na API — tentando de novo…", true);
+        },
+        onReinicio(n) {
+          acc = "";
+          ckptMapa = "";
+          panel.updateAssistant(assistantEl, acc);
+          panel.setStatus(
+            "O serviço da extensão reiniciou — refazendo o mapa (tentativa " + (n + 1) + ")…",
+            true
+          );
+        },
+      });
+      registrarCusto(fimMapa);
+
+      const md = limparMarkdownMapa(acc);
+      if (!md) {
+        panel.setStatus("O modelo não devolveu o mapa — tente gerar novamente.");
+        if (assistantEl) panel.removeMessage(assistantEl);
+        return;
+      }
+
+      const idProc = PJE.getIdProcesso();
+      const titulo = "Processo" + (idProc ? " " + idProc : "");
+      const { id } = await rpc({
+        type: "guardarMapa",
+        payload: { md, titulo, processo: idProc || "" },
+      });
+      const url = chrome.runtime.getURL("src/mapa.html?id=" + encodeURIComponent(id));
+      const nomeMd = ("mapa-mental" + (idProc ? "-processo-" + idProc : "") + ".md").replace(
+        /[^\w.\-]+/g,
+        "-"
+      );
+
+      panel.mostrarCardMapa(assistantEl, {
+        md,
+        resumo: resumoDoMapa(md),
+        // A aba abre no CLIQUE, não sozinha: a resposta demora e o gesto do
+        // usuário no "Gerar" já expirou — abrir aqui cairia no bloqueador de
+        // pop-ups. window.open de URL da extensão é navegação de topo, imune à
+        // CSP do tribunal (mesmo truque do "Abrir em nova aba" do preview).
+        onAbrir: () => window.open(url, "_blank", "noopener"),
+        onBaixar: () => baixarTexto(nomeMd, md, "text/markdown;charset=utf-8"),
+      });
+      panel.setStatus("");
+    } catch (e) {
+      panel.endPrep(true);
+      panel.setStatus("Erro: " + (e && e.message ? e.message : e));
+      if (assistantEl && !acc) panel.removeMessage(assistantEl);
+    } finally {
+      busy = false;
+      panel.lockInput(false);
+    }
+  });
+
+  // Tira a cerca ``` que alguns modelos colocam em volta do markdown, mesmo
+  // instruídos a não fazê-lo, e o preâmbulo antes do primeiro título.
+  function limparMarkdownMapa(txt) {
+    let t = String(txt || "").trim();
+    const cerca = t.match(/^```[a-z]*\s*\n([\s\S]*?)\n?```$/i);
+    if (cerca) t = cerca[1].trim();
+    const i = t.search(/^#{1,2}\s+/m);
+    if (i > 0) t = t.slice(i);
+    return t.trim();
+  }
+
+  // "5 eixos · 34 tópicos" para o card — contagem barata por regex (o parser
+  // de verdade vive na página do mapa).
+  function resumoDoMapa(md) {
+    const linhas = md.split(/\r?\n/);
+    const eixos = linhas.filter((l) => /^##\s+/.test(l)).length;
+    const itens = linhas.filter((l) => /^\s*(?:[-*+]|\d+[.)])\s+/.test(l)).length;
+    return eixos + " eixo(s) · " + itens + " tópico(s)";
+  }
 
   } // fim de iniciar()
 

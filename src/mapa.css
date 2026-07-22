@@ -1,0 +1,289 @@
+/* Página do mapa mental (markmap) — identidade visual do painel.
+   As variáveis de cor vêm de ui.css; aqui ficam só o cromo da página e o
+   ajuste fino do SVG gerado pelo markmap. */
+
+html,
+body {
+  height: 100%;
+  overflow: hidden; /* quem rola/zooma é o próprio mapa */
+}
+
+/* O atributo hidden do HTML perde para qualquer display definido por regra de
+   autor (.aviso usa display:flex) — sem isto o aviso "escondido" cobre o mapa
+   inteiro. Mesma regra que o panel.css já carrega pelo mesmo motivo. */
+[hidden] {
+  display: none !important;
+}
+
+.topo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, var(--pje), var(--pje-2));
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(5, 32, 46, 0.18);
+}
+.topo img {
+  border-radius: 7px;
+  flex: none;
+}
+.topo .tit {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.topo .tit .t {
+  font-size: 16px;
+  line-height: 1.1;
+}
+.topo .tit .s {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acoes {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.acoes .grupo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.acoes .rot {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.72);
+  margin-right: 3px;
+}
+.acoes button {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-radius: 7px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.1;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.acoes button:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+.acoes button.on {
+  background: #fff;
+  color: var(--pje-2);
+  border-color: #fff;
+  font-weight: 700;
+}
+
+.tela {
+  position: relative;
+  height: calc(100% - 50px);
+  background: radial-gradient(120% 120% at 50% 0%, #ffffff, var(--paper) 70%);
+}
+
+#mapa {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* o markmap monta o texto dos nós a partir destas variáveis; o padrão dele
+     é peso 300, fino demais para o vocabulário jurídico */
+  --markmap-font: 400 15px/1.35 system-ui, "Segoe UI", Arial, sans-serif;
+  --markmap-a-color: #005f88;
+  --markmap-code-bg: #eaf2f7;
+  --markmap-code-color: #22303f;
+}
+/* o markmap embute seu CSS global dentro do próprio <svg> (embedGlobalCSS);
+   estas regras só afinam o resultado para a paleta do projeto */
+#mapa .markmap-node > circle {
+  cursor: pointer;
+}
+#mapa .markmap-foreign code {
+  background: var(--cream);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+#mapa .markmap-foreign a {
+  color: var(--pje-2);
+}
+
+/* ---------- Conteúdo dos nós (HTML dentro do foreignObject) ---------- */
+
+/* ícone do eixo: monocromático, na cor do próprio ramo */
+#mapa .mm-ic {
+  width: 1.05em;
+  height: 1.05em;
+  vertical-align: -0.16em;
+  margin-right: 5px;
+}
+/* brasão da extensão no nó raiz — única imagem de bitmap do mapa */
+#mapa .mm-brasao {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  vertical-align: -0.3em;
+  margin-right: 7px;
+}
+#mapa .mm-raiz {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+/* pílulas do vocabulário processual: folha, id da peça, data, valor, norma */
+#mapa .mm-b {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.78em;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: 0.05em;
+}
+#mapa .mm-fl { background: #e2eef5; color: #17536e; }
+#mapa .mm-id { background: #eae4f2; color: #55407a; font-variant-numeric: tabular-nums; }
+#mapa .mm-dt { background: #e6f1e9; color: #235c3c; font-variant-numeric: tabular-nums; }
+#mapa .mm-vl { background: #f6ecd9; color: #7a5115; font-variant-numeric: tabular-nums; }
+#mapa .mm-lei { background: #f2e6e4; color: #8a3a30; }
+
+/* etiqueta de origem: peça, id e folha em linha própria, discreta */
+#mapa .mm-src {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78em;
+  line-height: 1.5;
+  color: #5d6b7a;
+}
+#mapa .mm-src .mm-b {
+  font-size: 0.95em;
+  margin-right: 1px;
+}
+
+/* tabelas dentro de um nó (partes, linha do tempo, valores) */
+#mapa .mm-tab {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.3;
+  table-layout: fixed;
+  word-break: break-word;
+  background: rgba(255, 255, 255, 0.75);
+}
+#mapa .mm-tab th,
+#mapa .mm-tab td {
+  border: 1px solid rgba(93, 107, 122, 0.35);
+  padding: 3px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+#mapa .mm-tab th {
+  background: rgba(0, 120, 170, 0.1);
+  font-weight: 700;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+#mapa .mm-tab tr:nth-child(even) td { background: rgba(0, 120, 170, 0.04); }
+
+/* ---------- Rodapé: legenda dos eixos + dica de uso ---------- */
+.rodape {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.legenda {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 10px;
+  max-width: 92%;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 6px rgba(5, 32, 46, 0.08);
+  font-size: 11.5px;
+  color: var(--text);
+}
+.legenda .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.legenda .lg i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dica {
+  margin: 0;
+  padding: 2px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.aviso {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  font-size: 14px;
+  color: var(--muted);
+  background: var(--paper);
+}
+.aviso b {
+  color: var(--ink);
+}
+
+/* ---------- Tema escuro (classe markmap-dark no <html>, que o próprio
+     markmap usa para trocar as variáveis do texto dos nós) ---------- */
+.markmap-dark body { background: #10202b; color: #dfe8ee; }
+.markmap-dark .tela {
+  background: radial-gradient(120% 120% at 50% 0%, #172c39, #10202b 70%);
+}
+.markmap-dark .legenda,
+.markmap-dark .dica {
+  background: rgba(16, 32, 43, 0.86);
+  color: #c3d2dc;
+}
+.markmap-dark .aviso { background: #10202b; color: #b7c6d1; }
+.markmap-dark #mapa { --markmap-a-color: #7cc6e6; }
+.markmap-dark #mapa .mm-tab { background: rgba(255, 255, 255, 0.06); }
+.markmap-dark #mapa .mm-tab th { background: rgba(124, 198, 230, 0.16); }
+.markmap-dark #mapa .mm-b { filter: brightness(0.92) saturate(1.1); }
+.markmap-dark #mapa .mm-src { color: #93a7b5; }
+
+@media print {
+  .topo,
+  .dica {
+    display: none;
+  }
+  .rodape { position: static; }
+  .legenda { box-shadow: none; }
+  .tela {
+    height: 100%;
+    background: #fff;
+  }
+}

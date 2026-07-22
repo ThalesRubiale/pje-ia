@@ -497,6 +497,80 @@ API e repassa os bytes pelo Port; o content script dispara o download com Blob +
 (sem permissão `downloads`). Custo: code execution tem franquia de 1.550 h/mês por
 organização (US$ 0,05/h depois), além dos tokens.
 
+## Mapa mental (markmap) — página `src/mapa.html`
+
+Botão "🧠 Mapa mental" na barra de ferramentas liga o **modo mapa** (`setMapaMode` em
+`panel.js`), clone exato do contrato do modo documento: instrução padrão editável no
+campo, faixa `.mapabar`, Enviar vira "🧠 Gerar mapa", ✕/Esc/segundo clique cancelam.
+Os dois modos são **mutuamente exclusivos** (ligar um desliga o outro) e "Nova conversa"
+desliga ambos. O turno (`panel.onMapa` → handler em `content.js`) é um **chat comum**:
+sem tools, sem skills, sem `container` — por isso funciona TAMBÉM no Gemini, ao
+contrário do `.docx`. Regras que não podem quebrar:
+
+- **Request isolado, como o docx**: `prepararEnvio([{role:"user", content:[...blocos,
+  instrucao + SUFIXO_MAPA]}], null)`. Não entra em `conversation` nem em
+  `pecasNaConversa` — gerar um mapa não altera a conversa em andamento.
+- **`SUFIXO_MAPA` é prescritivo de propósito** (mesma razão do sufixo do docx): só
+  Markdown, sem preâmbulo nem cerca ```, um único `#`, `##` nos eixos, listas `-` com
+  até 3 níveis, itens curtos com peça/folha entre parênteses, nada de tabela/HTML.
+  `limparMarkdownMapa` ainda tira cerca e preâmbulo que escapem.
+- **Nova aba, não overlay**: `markmap-view` exige `d3` GLOBAL (~340 KB), content
+  scripts do manifest não podem ser ES modules e `import()` dinâmico no content script
+  fica exposto à CSP do tribunal (a mesma que barra o embed `blob:` do preview). A
+  página `src/mapa.html` é `chrome-extension://`, carrega `vendor/d3.min.js` +
+  `vendor/markmap-view.js` por `<script>` e não pesa nada nas páginas do PJe. Ela está
+  em `web_accessible_resources` porque o `window.open` parte do content script.
+- **A aba NÃO abre sozinha**: o card no chat (`panel.mostrarCardMapa`) tem o botão
+  "Abrir mapa" — a resposta demora minutos e o gesto do "Gerar" já expirou; abrir
+  direto cairia no bloqueador de pop-ups.
+- **Canal de dados**: o content manda `{type:"guardarMapa"}` ao worker, que grava em
+  `chrome.storage.session` (`mapa:<id>`, poda nos 5 mais recentes) e devolve o `id`; a
+  página lê direto (contexto confiável). Some ao fechar o navegador — é o esperado.
+- **`vendor/` é intocado** (d3 7.9.0 ISC + markmap-view 0.18.12 MIT, com
+  `LICENSES.md`). **Não** vendorizar `markmap-lib`: arrasta katex/highlight.js/prismjs
+  (~311 KB) e busca assets em CDN. A árvore `IPureNode` (`{content, children}`) sai de
+  `mdParaArvore()` em `mapa.js` — ~70 linhas que entendem títulos e listas.
+- **`content` do nó é HTML**: `mapa.js` duplica `escapeHtml` + `inlineMd` do `panel.js`
+  (não dá para importar um IIFE de content script) e mantém a ordem **escape → formata**.
+  O texto vem dos autos; sem isso um `<img onerror>` numa petição executaria.
+- **Primeiro desenho com `duration: 0`**: as transições do d3 rodam em
+  `requestAnimationFrame`, que o Chrome CONGELA em aba de segundo plano — com animação,
+  abrir o mapa numa aba sem foco deixava os nós presos, invisíveis. A animação volta
+  logo após o `fit()`; `duracaoSegura()` repete a regra na troca de nível e o
+  `visibilitychange` redesenha + reenquadra ao voltar para a aba.
+- `[hidden] { display: none !important }` em `mapa.css` pelo MESMO motivo do
+  `panel.css`: o `.aviso` usa `display:flex` e cobria o mapa inteiro.
+- **Riqueza visual do nó** (o `content` do markmap é HTML, e é isso que sustenta
+  tudo abaixo): cada eixo é classificado por `EIXOS` (regex sobre o título sem
+  acento, mesma técnica das `CATEGORIAS` do painel) e ganha **ícone SVG + cor**;
+  a cor DESCE para todos os descendentes via `payload.cor` (a função `color` do
+  markmap lê o payload — foi por isso que `colorFreezeLevel` saiu). A decoração
+  roda em `decorarEixos()` DEPOIS de montar a árvore: durante a leitura não se
+  sabe ainda quem virou raiz, e o título do processo acabava com ícone de eixo.
+- **Realces do vocabulário processual** (`realces`): `fl.`/`fls.`, `id <n>`, datas,
+  `R$` e `art./súmula` viram pílulas coloridas. Rodam ENTRE o escape e o
+  `inlineMd` — o texto ainda não tem tags nesse ponto, então nenhum atributo é
+  corrompido; trechos entre crases saem de cena por placeholders PUA
+  (`…`, sempre escapados no código) para um `art. 5º` escrito como
+  código não virar pílula dentro do `<code>`.
+- **Etiqueta de origem** (`origemNoRodape`): a referência final do item —
+  `(Contestação, id 123461, fl. 61)` — sai do meio da frase e vira `.mm-src` em
+  linha própria. Citar peça, **id** e **folha** é requisito do recurso (é assim
+  que o usuário reencontra a peça na timeline), e o subtítulo da página mostra
+  `N/M com peça e folha` para expor quando o modelo não cumpriu.
+- **Tabelas**: bloco Markdown `|…|` + separador vira UM nó com `<table class="mm-tab">`
+  (partes, linha do tempo, valores). Sem `markmap-lib` no meio: o parser detecta o
+  bloco e monta o HTML.
+- A lista de peças (id + título) vai EXPLÍCITA no texto do request, além do `title`
+  de cada bloco `document` — sem ela o modelo inventa ou omite o id.
+- Recolhimento inicial: `initialExpandLevel: 2` (raiz + eixos). Os botões de detalhe
+  re-`setData` sobre um **clone** da árvore — depois do primeiro render ela carrega
+  `state`/`fold` e o nível não seria reaplicado. `colorFreezeLevel: 2` dá uma cor por
+  eixo, na paleta das categorias de peças. Não há exportação de SVG: o
+  `foreignObject` (que é o que dá as pílulas e tabelas) não sobrevive fora do
+  navegador — a saída visual é a impressão/PDF, com `beforeprint` → `mm.fit()`
+  para nada sair cortado.
+
 ## Desenvolvimento e teste
 
 - Não há bundler. Valide sintaxe com `node --check src/*.js`. Testes de unidade fora do
@@ -505,7 +579,16 @@ organização (US$ 0,05/h depois), além dos tokens.
   um `ReadableStream` de eventos simulados (chat com citação, `pause_turn`, docx);
   `_findSlashToken`/`_montarTextoEnvio` (gatilho `/` e merge prompt+texto) também saem
   do `eval` do `panel.js`, e `PLIB` roda com um stub de `chrome.storage.sync`
-  (get/set/remove + `onChanged` manual).
+  (get/set/remove + `onChanged` manual). `mdParaArvore` (mapa mental) roda em `vm` com
+  stub de `document`/`chrome` — `mapa.js` expõe `window.__mapa` ANTES dos `return` de
+  erro justamente para isso; o teste cobre aninhamento por indentação, fences, listas
+  numeradas e o **escape de HTML vindo dos autos**.
+- **Testar a página do mapa sem PJe**: HTML no scratchpad que stub
+  `chrome.storage.session.get` devolvendo `{md, titulo, processo}`, carregue
+  `vendor/d3.min.js` + `vendor/markmap-view.js` + `src/mapa.js` e abra com `?id=demo`
+  por HTTP local. Atenção ao testar por automação: em aba de segundo plano o
+  `visibilityState` fica `hidden` e as transições do d3 congelam — o que se vê na tela
+  pode ser um estado intermediário, não um bug de layout.
 - **Testar a UI sem PJe**: criar um HTML que stub `window.chrome`
   (`runtime.getURL`, `storage.local.get`, `storage.sync` completo — sem ele a
   biblioteca de prompts fica invisível —, `runtime.connect`) e carregue

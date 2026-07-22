@@ -381,6 +381,7 @@ var PjePanel = (function () {
                 <div class="tools">
                   <button class="tgl-search" aria-pressed="false" title="Liga/desliga a busca de jurisprudência e legislação em fontes oficiais (STF, STJ, Planalto…). Com a busca ligada, escreva a pergunta e use o botão Enviar normalmente.">🔍 Jurisprudência</button>
                   <button class="btn-docx" title="Liga o modo documento: a instrução aparece no campo (edite à vontade) e o botão Enviar vira “Gerar” — clique nele (ou Enter) para gerar o Word (.docx) com base nas peças marcadas.">📄 Gerar .docx</button>
+                  <button class="btn-mapa" title="Liga o modo mapa mental: a instrução aparece no campo (edite à vontade) e o botão Enviar vira “Gerar mapa” — a resposta abre num mapa mental interativo, em nova aba.">🧠 Mapa mental</button>
                   <button class="btn-plib" title="Seus prompts salvos: crie instruções reutilizáveis (título + texto) e insira-as na conversa digitando “/” no início do campo de mensagem. Sincronizam entre navegadores logados na mesma conta Google.">✦ Prompts</button>
                   <button class="modelo-badge" hidden title="Modelo de IA em uso nesta conversa — clique para trocar nas opções da extensão"></button>
                 </div>
@@ -389,12 +390,16 @@ var PjePanel = (function () {
                 <span class="docxbar-t">📄 <b>Modo documento ligado</b> — revise a instrução abaixo e clique em <b>Gerar</b>: a resposta será um arquivo Word (.docx), pode levar 1–2 min.</span>
                 <button class="docxbar-x" title="Cancelar a geração de documento (Esc)">✕</button>
               </div>
+              <div class="mapabar" hidden>
+                <span class="docxbar-t">🧠 <b>Modo mapa mental ligado</b> — revise a instrução abaixo e clique em <b>Gerar mapa</b>: a resposta vira um mapa mental interativo, que abre em nova aba.</span>
+                <button class="mapabar-x" title="Cancelar a geração do mapa mental (Esc)">✕</button>
+              </div>
               <div class="promptbar" hidden></div>
               <div class="inrow">
                 <textarea class="in" rows="1" placeholder="Pergunte sobre as peças… (@ cita uma peça)"></textarea>
                 <button class="send">Enviar</button>
               </div>
-              <div class="hint-key"><b>@</b> cita peças &nbsp;·&nbsp; <b>/</b> insere um prompt salvo &nbsp;·&nbsp; <b>Enter</b> envia &nbsp;·&nbsp; <b>Shift+Enter</b> quebra linha &nbsp;·&nbsp; <b>📄 .docx</b>: clique no botão, revise a instrução e clique em <b>Gerar</b></div>
+              <div class="hint-key"><b>@</b> cita peças &nbsp;·&nbsp; <b>/</b> insere um prompt salvo &nbsp;·&nbsp; <b>Enter</b> envia &nbsp;·&nbsp; <b>Shift+Enter</b> quebra linha &nbsp;·&nbsp; <b>📄 .docx</b> e <b>🧠 mapa mental</b>: clique no botão, revise a instrução e clique em <b>Gerar</b></div>
               <div class="cite-note" hidden>ℹ️ Modelos Gemini: as citações de página aparecem no próprio texto da resposta (ex.: “conforme a Contestação, fl. 12”), sem os marcadores [n] automáticos dos modelos Claude.</div>
             </div>
           </div>
@@ -816,6 +821,7 @@ var PjePanel = (function () {
           "Para gerar o documento, primeiro marque as peças que devem embasá-lo.";
         return;
       }
+      if (mapaMode) setMapaMode(false); // os dois modos são mutuamente exclusivos
       // preserva o que o usuário já digitou; senão, oferece a instrução
       // padrão — SALVO quando há prompt salvo ativo (chip): ele já é a
       // instrução do documento, injetar a padrão duplicaria comandos
@@ -829,6 +835,49 @@ var PjePanel = (function () {
     docxbar
       .querySelector(".docxbar-x")
       .addEventListener("click", () => setDocxMode(false));
+
+    // Modo MAPA MENTAL — mesmo contrato do modo documento (o Enviar é
+    // sequestrado, a faixa explica o passo, ✕/Esc/segundo clique cancelam).
+    // Diferença: não depende de skill nem de execução de código, então roda
+    // também nos modelos Gemini; a resposta é markdown e vira mapa em
+    // src/mapa.html, numa aba própria.
+    const INSTRUCAO_MAPA_PADRAO =
+      "Mapeie o processo: partes e representantes, síntese dos fatos, pedidos, teses de cada " +
+      "parte, provas produzidas, decisões proferidas e situação atual do feito.";
+    const btnMapa = $(".btn-mapa");
+    const mapabar = $(".mapabar");
+    let mapaCb = null;
+    let mapaMode = false;
+    function setMapaMode(on) {
+      mapaMode = on;
+      mapabar.hidden = !on;
+      btnMapa.classList.toggle("on", on);
+      btnMapa.textContent = on ? "✕ Cancelar mapa" : "🧠 Mapa mental";
+      sendBtn.textContent = on ? "🧠 Gerar mapa" : "Enviar";
+      sendBtn.classList.toggle("docx", on); // mesmo halo azul do modo documento
+      inEl.placeholder = on
+        ? "Instrução do mapa mental — edite e clique em Gerar mapa…"
+        : "Pergunte sobre as peças… (@ cita uma peça)";
+      if (!on) statusEl.textContent = "";
+    }
+    btnMapa.addEventListener("click", () => {
+      if (mapaMode) return setMapaMode(false); // segundo clique = cancelar
+      if (!getSelected().length) {
+        statusEl.textContent =
+          "Para gerar o mapa mental, primeiro marque as peças que devem embasá-lo.";
+        return;
+      }
+      if (docxMode) setDocxMode(false); // os dois modos são mutuamente exclusivos
+      if (!inEl.value.trim() && !promptAtivo) {
+        inEl.value = INSTRUCAO_MAPA_PADRAO;
+        autoresize();
+      }
+      setMapaMode(true);
+      inEl.focus();
+    });
+    mapabar
+      .querySelector(".mapabar-x")
+      .addEventListener("click", () => setMapaMode(false));
 
     // Selo do modelo ativo: clique abre a configuração da extensão (o
     // callback é o mesmo do CTA "configure sua chave").
@@ -1916,6 +1965,24 @@ var PjePanel = (function () {
         closeSlash();
         return;
       }
+      // Idem no modo mapa mental: Enviar/Enter geram o mapa, nunca uma
+      // mensagem de chat.
+      if (mapaMode) {
+        if (!mapaCb) return;
+        const sel = getSelected();
+        if (!sel.length) {
+          statusEl.textContent = "Marque as peças que devem embasar o mapa mental.";
+          return;
+        }
+        setMapaMode(false);
+        mapaCb(t, sel);
+        inEl.value = "";
+        inEl.style.height = "auto";
+        setPromptAtivo(null); // consumido no envio
+        closeMention();
+        closeSlash();
+        return;
+      }
       if (!sendCb) return;
       if (!t.trim()) return; // com chip ativo t nunca é vazio: chip sozinho envia
       sendCb(t, getSelected());
@@ -1984,10 +2051,11 @@ var PjePanel = (function () {
           return;
         }
       }
-      // Esc com o popup @ fechado cancela o modo documento
-      if (e.key === "Escape" && docxMode) {
+      // Esc com o popup @ fechado cancela o modo documento / mapa mental
+      if (e.key === "Escape" && (docxMode || mapaMode)) {
         e.preventDefault();
-        setDocxMode(false);
+        if (docxMode) setDocxMode(false);
+        if (mapaMode) setMapaMode(false);
         return;
       }
       if (e.key === "Enter" && !e.shiftKey) {
@@ -2133,7 +2201,8 @@ var PjePanel = (function () {
         needkeyEl = null;
         prepEl = null;
         transcript.length = 0;
-        setDocxMode(false); // nova conversa desliga o modo documento
+        setDocxMode(false); // nova conversa desliga os modos documento…
+        setMapaMode(false); // …e mapa mental
         setPromptAtivo(null); // e solta o chip de prompt salvo
         statusEl.textContent = "";
         alertEl.hidden = true;
@@ -2272,6 +2341,43 @@ var PjePanel = (function () {
       onGerarDoc(cb) {
         gerarDocCb = cb;
       },
+      onMapa(cb) {
+        mapaCb = cb;
+      },
+      // Resultado do mapa mental: em vez do markdown cru (longo e repetitivo)
+      // a bolha vira um card com as ações, e o texto fica num <details>
+      // recolhido. O card é escrito no __body da bolha — depois disso NÃO se
+      // pode chamar updateAssistant nesse elemento (ela reescreve o innerHTML).
+      mostrarCardMapa(el, info) {
+        if (!el || !info) return;
+        estruturaAssistant(el);
+        const entry = el.__entry;
+        if (entry) entry.text = info.md || ""; // exportar .md leva o mapa inteiro
+        el.__body.innerHTML =
+          '<div class="mapacard">' +
+          '<div class="mapacard-t">🧠 <b>Mapa mental gerado</b>' +
+          (info.resumo ? " — " + escapeHtml(info.resumo) : "") +
+          "</div>" +
+          '<div class="mapacard-acts">' +
+          '<button class="mapacard-abrir">Abrir mapa</button>' +
+          '<button class="mapacard-md">⬇ Baixar .md</button>' +
+          "</div>" +
+          "<details class=\"mapacard-src\"><summary>Ver o texto do mapa</summary>" +
+          '<div class="mapacard-md-body">' + renderMd(info.md || "") + "</div>" +
+          "</details>" +
+          "</div>";
+        el.__body
+          .querySelector(".mapacard-abrir")
+          .addEventListener("click", () => info.onAbrir && info.onAbrir());
+        el.__body
+          .querySelector(".mapacard-md")
+          .addEventListener("click", () => info.onBaixar && info.onBaixar());
+        // abrir o texto do mapa cresce a bolha para fora da área visível
+        el.__body.querySelector(".mapacard-src").addEventListener("toggle", () => {
+          msgs.scrollTop = msgs.scrollHeight;
+        });
+        msgs.scrollTop = msgs.scrollHeight;
+      },
       // busy=true mostra um spinner antes do texto (trabalho em andamento —
       // análise, geração de documento, upload…), para o usuário ver que a
       // extensão está trabalhando e não travada.
@@ -2351,6 +2457,7 @@ var PjePanel = (function () {
         // quando o modelo atual não o suporta (Gemini).
         tglSearch.disabled = b;
         btnDocx.disabled = b || !docxDisponivel;
+        btnMapa.disabled = b;
         btnPlib.disabled = b;
         const px = promptbar.querySelector(".pchip-x");
         if (px) px.disabled = b;
